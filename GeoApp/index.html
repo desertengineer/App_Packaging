@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GeoQuest</title>
+
+<style>
+    body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: linear-gradient(to right, #1e3c72, #2a5298);
+        color: white;
+        text-align: center;
+    }
+
+    header {
+        padding: 20px;
+        font-size: 32px;
+        font-weight: bold;
+    }
+
+    .container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 15px;
+        padding: 20px;
+        max-width: 600px;
+        margin: auto;
+    }
+
+    .btn {
+        background: white;
+        color: #2a5298;
+        padding: 15px;
+        border-radius: 12px;
+        font-size: 16px;
+        font-weight: bold;
+        border: none;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+    .btn:hover {
+        transform: scale(1.05);
+        background: #f0f0f0;
+    }
+
+    .start-btn {
+        margin-top: 20px;
+        background: #ffcc00;
+        color: black;
+        width: 200px;
+    }
+
+    footer {
+        margin-top: 30px;
+        font-size: 14px;
+        opacity: 0.8;
+    }
+</style>
+</head>
+
+<body>
+
+<header>🌍 GeoQuest</header>
+
+<div class="container">
+    <button class="btn">🏛 Landmarks</button>
+    <button class="btn">🏙 Capitals</button>
+    <button class="btn">🌍 Countries</button>
+    <button class="btn">🏞 Rivers</button>
+    <button class="btn">⛰ Mountains</button>
+    <button class="btn">🌊 Lakes</button>
+    <button class="btn">🏳 Flags</button>
+    <button class="btn">🧭 Continents</button>
+</div>
+
+<button class="btn start-btn">▶ Start Game</button>
+
+<footer>
+    Learn Geography the Fun Way!
+</footer>
+
+</body>
+</html>
