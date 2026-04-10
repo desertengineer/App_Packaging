@@ -1,7 +1,9 @@
 id,name,alt,image,group,tags
-1,Paris,France,images/paris.jpg,capital,europe
-2,Tokyo,Japan,images/tokyo.jpg,capital,asia
-3,Cairo,Egypt,images/cairo.jpg,capital,africa
-4,Ottawa,Canada,images/ottawa.jpg,capital,north_america
-5,Brasilia,Brazil,images/brasilia.jpg,capital,south_america
-6,New Delhi,India,images/new_delhi.jpg,capital,asia
+1,Paris,France,GeoData/images/capitals/Paris.png,capital,europe
+2,Tokyo,Japan,GeoData/images/capitals/Tokyo.png,capital,asia
+3,Cairo,Egypt,GeoData/images/capitals/Cairo.png,capital,africa
+4,Ottawa,Canada,GeoData/images/capitals/Ottawa.png,capital,north_america
+5,Brasilia,Brazil,GeoData/images/capitals/Brasilia.png,capital,south_america
+6,New Delhi,India,GeoData/images/capitals/New Delhi.png,capital,asia
+7,London,United Kingdom,GeoData/images/capitals/London.png,capital,europe
+8,Rome,Italy,GeoData/images/capitals/Rome.png,capital,europe

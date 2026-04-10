@@ -1,6 +1,9 @@
 id,name,alt,image,group,tags
-1,Eiffel Tower,France,images/eiffel.jpg,landmark,europe
-2,Statue of Liberty,USA,images/liberty.jpg,landmark,north_america
-3,Taj Mahal,India,images/tajmahal.jpg,landmark,asia
-4,Great Wall,China,images/greatwall.jpg,landmark,asia
-5,Pyramids of Giza,Egypt,images/pyramids.jpg,landmark,africa
+1,Eiffel Tower,France,GeoData/images/landmarks/Eiffel Tower.png,landmark,europe
+2,Great Wall,China,GeoData/images/landmarks/Great Wall.png,landmark,asia
+3,Taj Mahal,India,GeoData/images/landmarks/Taj Mahal.png,landmark,asia
+4,Giza Pyramids,Egypt,GeoData/images/landmarks/Giza Pyramids.png,landmark,africa
+5,Statue of Liberty,USA,GeoData/images/landmarks/Liberty Statue.png,landmark,north_america
+6,Burj Khalifa,UAE,GeoData/images/landmarks/Burj Khalifa.png,landmark,asia
+7,Colosseum,Italy,GeoData/images/landmarks/Colosseum.png,landmark,europe
+8,Big Ben,UK,GeoData/images/landmarks/Big Ben.png,landmark,europe
