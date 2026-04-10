@@ -1,0 +1,7 @@
+id,name,alt,image,group,tags
+1,New York,USA,images/newyork.jpg,city,north_america
+2,London,UK,images/london.jpg,city,europe
+3,Dubai,UAE,images/dubai.jpg,city,asia
+4,Sydney,Australia,images/sydney.jpg,city,australia
+5,Rome,Italy,images/rome.jpg,city,europe
+6,Beijing,China,images/beijing.jpg,city,asia

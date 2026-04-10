@@ -1,0 +1,6 @@
+id,name,alt,image,group,tags
+1,Lake Victoria,Africa,images/victoria.jpg,lake,africa
+2,Lake Superior,USA,images/superior.jpg,lake,north_america
+3,Lake Baikal,Russia,images/baikal.jpg,lake,asia
+4,Lake Titicaca,Peru,images/titicaca.jpg,lake,south_america
+5,Dead Sea,Middle East,images/deadsea.jpg,lake,asia

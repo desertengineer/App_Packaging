@@ -1,0 +1,6 @@
+id,name,alt,image,group,tags
+1,Pacific Ocean,,images/pacific.jpg,ocean,water
+2,Atlantic Ocean,,images/atlantic.jpg,ocean,water
+3,Indian Ocean,,images/indian.jpg,ocean,water
+4,Arctic Ocean,,images/arctic.jpg,ocean,ice
+5,Southern Ocean,,images/southern.jpg,ocean,water

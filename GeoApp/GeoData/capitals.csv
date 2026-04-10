@@ -1,0 +1,7 @@
+id,name,alt,image,group,tags
+1,Paris,France,images/paris.jpg,capital,europe
+2,Tokyo,Japan,images/tokyo.jpg,capital,asia
+3,Cairo,Egypt,images/cairo.jpg,capital,africa
+4,Ottawa,Canada,images/ottawa.jpg,capital,north_america
+5,Brasilia,Brazil,images/brasilia.jpg,capital,south_america
+6,New Delhi,India,images/new_delhi.jpg,capital,asia
