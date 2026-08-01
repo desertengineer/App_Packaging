@@ -1,8 +1,0 @@
-id,name,alt,image,group,tags
-1,Africa,,images/africa.jpg,continent,land
-2,Asia,,images/asia.jpg,continent,land
-3,Europe,,images/europe.jpg,continent,land
-4,North America,,images/north_america.jpg,continent,land
-5,South America,,images/south_america.jpg,continent,land
-6,Australia,,images/australia.jpg,continent,land
-7,Antarctica,,images/antarctica.jpg,continent,ice
