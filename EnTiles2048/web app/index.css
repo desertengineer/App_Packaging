@@ -1,0 +1,339 @@
+:root {
+    --bg-color: #0A192F;
+    --surface-color: #112240;
+    --surface-border: #233554;
+    --text-main: #E6F1FF;
+    --text-accent: #64FFDA;
+    --text-muted: #8892B0;
+}
+
+body {
+    /* Using native system fonts for UWP/Windows alignment */
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    touch-action: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+    padding: 16px;
+    box-sizing: border-box;
+}
+
+.main-wrapper {
+    width: 100%;
+    max-width: 500px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.top-controls {
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.info-box {
+    background-color: var(--surface-color);
+    border-radius: 8px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 0;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--surface-border);
+}
+
+.info-label {
+    color: var(--text-accent);
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.info-value {
+    font-weight: bold;
+    font-size: 1.25rem;
+    color: white;
+    margin-top: 2px;
+}
+
+.btn {
+    border-radius: 8px;
+    flex: 1;
+    font-weight: bold;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    transition: all 0.1s;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    color: white;
+    padding: 12px;
+}
+
+.btn:active {
+    transform: scale(0.95);
+}
+
+.btn-primary {
+    background-color: #1D4ED8;
+}
+
+.btn-primary:hover {
+    background-color: #2563EB;
+}
+
+.btn-secondary {
+    background-color: #0F766E;
+}
+
+.btn-secondary:hover {
+    background-color: #14B8A6;
+}
+
+.btn-muted {
+    background-color: #4B5563;
+}
+
+.btn-muted:hover {
+    background-color: #6B7280;
+}
+
+.game-container {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    max-height: 500px;
+    background-color: var(--surface-color);
+    border-radius: 16px;
+    padding: 12px;
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5), 0 10px 30px rgba(0, 0, 0, 0.4);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 12px;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.grid-cell {
+    background-color: #1A2F50;
+    border-radius: 12px;
+    box-shadow: inset 0 4px 6px rgba(0, 0, 0, 0.3);
+    width: 100%;
+    height: 100%;
+}
+
+#tiles-container {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 12px;
+    pointer-events: none;
+    /* Let touches pass through to the game container */
+}
+
+#tiles-container>div {
+    width: 100%;
+    height: 100%;
+}
+
+.tile {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 12px;
+    font-weight: 800;
+    font-size: clamp(1.5rem, 6vw, 2.5rem);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4),
+        inset 0 -5px 0 rgba(0, 0, 0, 0.25),
+        inset 0 3px 0 rgba(255, 255, 255, 0.2);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: transform 0.1s ease-in-out;
+    z-index: 10;
+}
+
+.tile-new {
+    animation: pop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.tile-2 {
+    background-color: #3b82f6;
+    color: #ffffff;
+}
+
+.tile-4 {
+    background-color: #06b6d4;
+    color: #ffffff;
+}
+
+.tile-8 {
+    background-color: #14b8a6;
+    color: #ffffff;
+}
+
+.tile-16 {
+    background-color: #10b981;
+    color: #ffffff;
+}
+
+.tile-32 {
+    background-color: #84cc16;
+    color: #111827;
+}
+
+.tile-64 {
+    background-color: #eab308;
+    color: #111827;
+}
+
+.tile-128 {
+    background-color: #f59e0b;
+    color: #ffffff;
+}
+
+.tile-256 {
+    background-color: #f97316;
+    color: #ffffff;
+}
+
+.tile-512 {
+    background-color: #ef4444;
+    color: #ffffff;
+}
+
+.tile-1024 {
+    background-color: #d946ef;
+    color: #ffffff;
+}
+
+.tile-2048 {
+    background-color: #8b5cf6;
+    color: #ffffff;
+    box-shadow: 0 0 15px #a78bfa;
+}
+
+@keyframes pop {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes milestone-glow {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.8);
+    }
+
+    50% {
+        transform: scale(1.15);
+        box-shadow: 0 0 40px 20px rgba(52, 211, 153, 0);
+    }
+
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+    }
+}
+
+.milestone-animation {
+    animation: milestone-glow 0.8s ease-out !important;
+    z-index: 50;
+    border: 2px solid #64FFDA;
+}
+
+.overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(10, 25, 47, 0.85);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    backdrop-filter: blur(4px);
+    pointer-events: auto;
+}
+
+.overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.overlay h2 {
+    font-size: 2.25rem;
+    font-weight: bold;
+    color: white;
+    margin: 0 0 8px 0;
+    text-align: center;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.overlay p {
+    color: var(--text-accent);
+    margin: 0 0 24px 0;
+    text-align: center;
+    padding: 0 16px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.overlay-buttons {
+    display: flex;
+    gap: 16px;
+}
+
+.overlay-buttons .btn {
+    padding: 10px 24px;
+}
+
+.instructions {
+    background-color: var(--surface-color);
+    border: 1px solid var(--surface-border);
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+    box-sizing: border-box;
+}
+
+.instructions h2 {
+    color: var(--text-main);
+    font-weight: bold;
+    font-size: 1.125rem;
+    margin: 0 0 8px 0;
+}
+
+.instructions p {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    margin: 0;
+}

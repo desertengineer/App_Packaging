@@ -1,0 +1,30 @@
+{
+  "id": "/",
+  "name": "Tile Master 2048",
+  "short_name": "Tile Master 2048",
+  "start_url": "./index.html",
+  "scope": "/",
+  "display": "standalone",
+  "description": "Merge tiles, reach 2048, and challenge your best score in this classic puzzle game.",
+  "lang": "en",
+  "dir": "ltr",
+  "theme_color": "#0A192F",
+  "background_color": "#0A192F",
+  "orientation": "any",
+  "iarc_rating_id": "97a8544c-e319-8cfc-84b0-3f3f755ddbb1",
+  "icons": [
+    { "src": "assets/apple-icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "assets/manifest-icon-192.any.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/manifest-icon-192.maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "assets/manifest-icon-512.any.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/manifest-icon-512.maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "assets/Screenshot-1.png", "sizes": "1366x768", "type": "image/png", "form_factor": "wide", "label": "Title screen and game menu" },
+    { "src": "assets/Screenshot-2.png", "sizes": "1366x768", "type": "image/png", "form_factor": "wide", "label": "Gameplay view with tiles" },
+    { "src": "assets/Screenshot-3.png", "sizes": "1366x768", "type": "image/png", "form_factor": "wide", "label": "Game over state" },
+    { "src": "assets/Screenshot-4.png", "sizes": "768x1366", "type": "image/png", "form_factor": "narrow", "label": "Title screen and game menu" },
+    { "src": "assets/Screenshot-5.png", "sizes": "768x1366", "type": "image/png", "form_factor": "narrow", "label": "Gameplay view with tiles" }
+  ],
+  "categories": ["games"]
+}

@@ -1,0 +1,101 @@
+D:\0.Drives\OneDrive\Desktop\1-My VBA\Visual Studio Works\Create a custom tab by using the Ribbon Designer\MyExcelRibbon\bin\Release
+D:\0.Drives\OneDrive\Desktop\1-My VBA\Visual Studio Works\Create a custom tab by using the Ribbon Designer\MyExcelRibbon\obj\Release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\generated\res\pngs\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\generated\res\resValues\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\aar_metadata_check\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\annotation_processor_list\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\app_integrity_config\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\app_metadata\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\assets\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\binary_art_profile\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\binary_art_profile_metadata\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\bundle_dependency_report\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\bundle_ide_model\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\bundle_ide_redirect_file\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\bundle_manifest\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\combined_art_profile\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\compatible_screen_manifest\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\compile_and_runtime_not_namespaced_r_class_jar\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\d8_metadata\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\data_binding_layout_info_type_merge\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\data_binding_layout_info_type_package\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\desugar_graph\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\dex\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\dex_archive_input_jar_hashes\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\dex_metadata_directory\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\dex_number_of_buckets_file\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\duplicate_classes_check\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\external_file_lib_dex_archives\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\external_libs_dex\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\external_libs_dex_archive\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\external_libs_dex_archive_with_artifact_transforms\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\global_synthetics_dex\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\global_synthetics_external_lib\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\global_synthetics_external_libs_artifact_transform\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\global_synthetics_file_lib\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\global_synthetics_mixed_scope\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\global_synthetics_project\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\global_synthetics_subproject\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\incremental\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\intermediary_bundle\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\java_res\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\linked_resources_binary_format\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\linked_resources_for_bundle_proto_format\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\lint_vital_intermediate_text_report\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\lint_vital_output\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\lint_vital_partial_results\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\lint_vital_report_lint_model\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\lint_vital_return_value\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\local_only_symbol_list\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\manifest_merge_blame_file\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\merged_art_profile\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\merged_java_res\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\merged_jni_libs\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\merged_manifest\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\merged_manifests\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\merged_native_libs\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\merged_res\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\merged_res_blame_folder\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\merged_shaders\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\merged_startup_profile\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\merged_test_only_native_libs\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\metadata_library_dependencies_report\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\mixed_scope_dex_archive\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\module_bundle\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\native_symbol_tables\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\navigation_json\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\nested_resources_validation_report\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\packaged_manifests\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\packaged_res\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\project_dex_archive\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\runtime_symbol_list\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\source_set_path_map\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\stable_resource_ids_file\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\stripped_native_libs\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\sub_project_dex_archive\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\symbol_list_with_package_name\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\validate_signing_config\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\intermediates\version_control_info_file\release
+D:\AndroidStudioProjects\0.QuickAppNinja\FamousLandmarks\app\build\tmp\kotlin-classes\release
+D:\Program Files\Android\Android Studio2026\jbr\release
+D:\Users\HP\AppData\Local\Amazon\Kindle Create\ConvGen\jre\release
+D:\Users\HP\AppData\Local\Programs\Eclipse Adoptium\jdk-25.0.3.9-hotspot\release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules\vsda\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\@parcel\watcher\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\@vscode\deviceid\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\@vscode\native-watchdog\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\@vscode\policy-watcher\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\@vscode\spdlog\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\@vscode\sqlite3\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\@vscode\windows-ca-certs\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\@vscode\windows-mutex\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\@vscode\windows-process-tree\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\@vscode\windows-registry\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\kerberos\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\native-is-elevated\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\native-keymap\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\node-pty\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\vscode-oniguruma\release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\vsda\build\Release
+D:\Users\HP\AppData\Local\Programs\Microsoft VS Code\e4c7e7b1d6\resources\app\node_modules.asar.unpacked\windows-foreground-love\build\Release

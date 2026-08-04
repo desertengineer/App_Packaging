@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-    namespace = "com.bekeirataapps.magicblitzblitz2026" // Update this to match your actual package name if different
+    namespace = "com.bekeirataapps.magicblitzblitz2026"
     compileSdk = 35
 
     defaultConfig {
@@ -18,19 +18,14 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
-
-        // Tells KSP where to export the Room Database schemas (great for version control)
-        ksp {
-            arg("room.schemaLocation", "$projectDir/schemas")
-        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(
-                    getDefaultProguardFile("proguard-android-optimize.txt"),
-                    "proguard-rules.pro"
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
             )
         }
     }
@@ -40,13 +35,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    kotlinOptions {
-        jvmTarget = "21"
+    kotlin {
+        jvmToolchain {
+            languageVersion.set(JavaLanguageVersion.of(21))
+        }
     }
 
     buildFeatures {
         compose = true
     }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
