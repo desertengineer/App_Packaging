@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths:
-      - "EnBlocks/**"
-      - ".github/workflows/MagicBlockBlitz2026_Packages.yml"
+      - 'EnBlocks/**'
+      - '.github/workflows/MagicBlockBlitz2026_Packages.yml'
   workflow_dispatch:
 
 permissions:
@@ -107,7 +107,7 @@ jobs:
           PLIST_PATH=$RUNNER_TEMP/profile.plist
           echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
           security cms -D -i "$PP_PATH" > $PLIST_PATH
-
+          
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $PLIST_PATH)
           TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" $PLIST_PATH || echo "$FALLBACK_TEAM_ID")
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" $PLIST_PATH)
@@ -116,12 +116,12 @@ jobs:
           if [ -z "$BUNDLE_ID" ] || [ "$BUNDLE_ID" = "*" ]; then
             BUNDLE_ID="$FALLBACK_BUNDLE_ID"
           fi
-
+          
           echo "APPLE_TEAM_ID=$TEAM_ID" >> $GITHUB_ENV
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
           echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
           echo "BUNDLE_ID=$BUNDLE_ID" >> $GITHUB_ENV
-
+          
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
           echo "Provisioning Profile Installed: $PROFILE_NAME ($PROFILE_UUID) for Bundle: $BUNDLE_ID (Team:$TEAM_ID)"
@@ -208,17 +208,24 @@ jobs:
       - name: Upload to TestFlight / App Store Connect
         if: success()
         env:
-          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID || vars.APP_STORE_CONNECT_KEY_ID || 'C6HLRTWSC2' }}
-          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID || vars.APP_STORE_CONNECT_ISSUER_ID || '2e4974f6-27d6-476e-9322-0a79cff7bf00' }}
-          KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT || secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          SECRET_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          VAR_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
+          SECRET_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          VAR_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
+          SECRET_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
+          SECRET_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
         run: |
+          KEY_ID="${SECRET_KEY_ID:-${VAR_KEY_ID:-C6HLRTWSC2}}"
+          ISSUER_ID="${SECRET_ISSUER_ID:-${VAR_ISSUER_ID:-2e4974f6-27d6-476e-9322-0a79cff7bf00}}"
+          KEY_CONTENT="${SECRET_KEY_CONTENT:-$SECRET_PRIVATE_KEY}"
+
           API_KEYS_DIR=~/.appstoreconnect/private_keys
           mkdir -p "$API_KEYS_DIR"
           echo "$KEY_CONTENT" > "$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
           chmod 600 "$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
-
+          
           IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
-
+          
           echo "Uploading $IPA_PATH to App Store Connect..."
           xcrun altool --upload-app \
             -t ios \
