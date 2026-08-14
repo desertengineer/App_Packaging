@@ -1,0 +1,380 @@
+name: Build Magic Block Blitz 2026
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_notes:
+        description: 'Build notes / TestFlight release description (Optional)'
+        required: false
+        default: 'Manual trigger following commit completion'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    environment: MagicBlockBlitz-Environment
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4.2.2
+
+      - name: Determine Target Directory
+        run: |
+          RAW_DIR="${{ vars.MONOREPO_DIRECTORY }}"
+          RAW_DIR="${RAW_DIR%/}"
+          
+          if [ -n "$RAW_DIR" ] && [ -d "$RAW_DIR" ]; then
+            TARGET_DIR="$RAW_DIR"
+          elif [ -d "Apps/EnBlocks2026" ]; then
+            TARGET_DIR="Apps/EnBlocks2026"
+          elif [ -d "apps/EnBlocks2026" ]; then
+            TARGET_DIR="apps/EnBlocks2026"
+          else
+            TARGET_DIR="."
+          fi
+          
+          echo "Target Working Directory resolved to: $TARGET_DIR"
+          echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4.2.0
+        with:
+          node-version: 22
+
+      - name: Prepare Web Directory
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          mkdir -p dist
+          cp www/index.html www/index.js www/index.css www/manifest.json www/service-worker.js dist/ || true
+          cp -r www/assets dist/ || true
+
+      - name: Install Dependencies
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --prefer-offline --no-audit --progress=false
+          else
+            npm install --no-audit --no-fund --no-progress
+          fi
+
+      - name: Inject Capacitor Configuration (App Store Alignment)
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}",
+            "appName": "${{ vars.APP_NAME || 'Magic Block Blitz 2026' }}",
+            "webDir": "dist"
+          }
+          EOF
+
+      - name: Initialize or Sync Android Platform
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          if [ ! -d "android" ]; then
+            npx --yes --package @capacitor/cli@6 cap add android
+          else
+            npx --yes --package @capacitor/cli@6 cap sync android
+          fi
+
+      - name: Setup Java (Zulu OpenJDK 17)
+        uses: actions/setup-java@v4.4.0
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Ensure Gradle Wrapper Executable
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          if [ -f android/gradlew ]; then
+            chmod +x android/gradlew || true
+          fi
+
+      - name: Decode Android Keystore
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
+
+      - name: Build and Sign Release APK via Gradle
+        working-directory: ${{ env.TARGET_DIR }}
+        env:
+          ORG_GRADLE_PROJECT_androidInjectedSigningStoreFile: ${{ github.workspace }}/${{ env.TARGET_DIR }}/android/app/release.keystore
+          ORG_GRADLE_PROJECT_androidInjectedSigningStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_androidInjectedSigningKeyAlias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_androidInjectedSigningKeyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          cd android
+          if [ -f ./gradlew ]; then
+            ./gradlew assembleRelease --no-daemon --console=plain
+          else
+            echo "gradlew not found"
+            exit 1
+          fi
+
+      - name: Locate and Package Android Artifact
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          mkdir -p final_output
+          APK_AAB_PATH=$(find android/app/build/outputs -type f \( -name "*.apk" -o -name "*.aab" \) | head -n 1 || true)
+          if [ -n "$APK_AAB_PATH" ]; then
+            echo "Found artifact: $APK_AAB_PATH"
+            EXT="${APK_AAB_PATH##*.}"
+            cp "$APK_AAB_PATH" final_output/MagicBlockBlitz2026-Final.$EXT
+          else
+            echo "No build artifact found"
+            exit 1
+          fi
+
+      - name: Upload Verified Android Artifact
+        uses: actions/upload-artifact@v4.6.1
+        with:
+          name: MagicBlockBlitz2026-Android-Release
+          path: ${{ env.TARGET_DIR }}/final_output/MagicBlockBlitz2026-Final.*
+
+  build-ios:
+    runs-on: macos-latest
+    environment: MagicBlockBlitz-Environment
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4.2.2
+
+      - name: Determine Target Directory
+        run: |
+          RAW_DIR="${{ vars.MONOREPO_DIRECTORY }}"
+          RAW_DIR="${RAW_DIR%/}"
+          
+          if [ -n "$RAW_DIR" ] && [ -d "$RAW_DIR" ]; then
+            TARGET_DIR="$RAW_DIR"
+          elif [ -d "Apps/EnBlocks2026" ]; then
+            TARGET_DIR="Apps/EnBlocks2026"
+          elif [ -d "apps/EnBlocks2026" ]; then
+            TARGET_DIR="apps/EnBlocks2026"
+          else
+            TARGET_DIR="."
+          fi
+          
+          echo "Target Working Directory resolved to: $TARGET_DIR"
+          echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4.2.0
+        with:
+          node-version: 22
+
+      - name: Prepare Web Directory
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          mkdir -p dist
+          cp www/index.html www/index.js www/index.css www/manifest.json www/service-worker.js dist/ || true
+          cp -r www/assets dist/ || true
+
+      - name: Install Dependencies
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --prefer-offline --no-audit --progress=false
+          else
+            npm install --no-audit --no-fund --no-progress
+          fi
+
+      - name: Inject Capacitor Configuration
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}",
+            "appName": "${{ vars.APP_NAME || 'Magic Block Blitz 2026' }}",
+            "webDir": "dist"
+          }
+          EOF
+
+      - name: Sync iOS Native Platform
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          if [ ! -d "ios" ]; then
+            npx --yes --package @capacitor/cli@6 cap add ios
+          else
+            npx --yes --package @capacitor/cli@6 cap sync ios
+          fi
+
+      - name: Import Apple Certificate to Keychain
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 || secrets.APPLE_DISTRIBUTION_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS || secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: "temp_keychain_pass_${{ github.run_id }}"
+        run: |
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychains -d user -s $KEYCHAIN_PATH
+
+      - name: Install Provisioning Profile & Extract Metadata
+        env:
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE || secrets.APPLE_PROVISION_PROFILE || secrets.PROVISIONING_PROFILE_BASE64 }}
+          FALLBACK_BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
+          FALLBACK_TEAM_ID: ${{ vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID || 'XHNXQ72KYZ' }}
+        run: |
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          PLIST_PATH=$RUNNER_TEMP/profile.plist
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+          security cms -D -i "$PP_PATH" > $PLIST_PATH
+          
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $PLIST_PATH)
+          TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" $PLIST_PATH || echo "$FALLBACK_TEAM_ID")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" $PLIST_PATH)
+          RAW_APP_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" $PLIST_PATH)
+          BUNDLE_ID=$(echo "$RAW_APP_ID" | sed 's/^[^.]*\.//')
+          if [ -z "$BUNDLE_ID" ] || [ "$BUNDLE_ID" = "*" ]; then
+            BUNDLE_ID="$FALLBACK_BUNDLE_ID"
+          fi
+          
+          echo "APPLE_TEAM_ID=$TEAM_ID" >> $GITHUB_ENV
+          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
+          echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
+          echo "BUNDLE_ID=$BUNDLE_ID" >> $GITHUB_ENV
+          
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
+          echo "Provisioning Profile Installed: $PROFILE_NAME ($PROFILE_UUID) for Bundle: $BUNDLE_ID (Team: $TEAM_ID)"
+
+      - name: Install CocoaPods Dependencies & Strip Pod Signing
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        run: |
+          pod install || pod repo update && pod install
+          if [ -f Pods/Pods.xcodeproj/project.pbxproj ]; then
+            sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' Pods/Pods.xcodeproj/project.pbxproj || true
+            sed -i '' 's/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = "";/g' Pods/Pods.xcodeproj/project.pbxproj || true
+          fi
+
+      - name: Configure Native Xcode Signing
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        run: |
+          PBXPROJ="App.xcodeproj/project.pbxproj"
+          if [ -f "$PBXPROJ" ]; then
+            sed -i '' 's/CODE_SIGN_STYLE = .*/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ" || true
+            sed -i '' "s/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = ${{ env.APPLE_TEAM_ID }};/g" "$PBXPROJ" || true
+            sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = \"${{ env.PROFILE_UUID }}\";/g" "$PBXPROJ" || true
+          fi
+
+      - name: Build and Archive iOS App
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        env:
+          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+          XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+        run: |
+          xcodebuild archive \
+            -workspace App.xcworkspace \
+            -scheme "${XCODE_SCHEME}" \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/App.xcarchive \
+            -derivedDataPath $RUNNER_TEMP/DerivedData \
+            CODE_SIGN_STYLE="Manual" \
+            DEVELOPMENT_TEAM="${APPLE_TEAM_ID}" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            -quiet
+
+      - name: Export IPA Package
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          mkdir -p ios/App/output
+          cat <<EOF > exportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>${{ env.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${{ env.BUNDLE_ID }}</key>
+              <string>${{ env.PROFILE_UUID }}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/App.xcarchive \
+            -exportOptionsPlist exportOptions.plist \
+            -exportPath ios/App/output \
+            -quiet
+
+      - name: Verify IPA Output
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
+          if [ -z "$IPA_PATH" ]; then
+            echo "❌ No IPA file found in output directory"
+            exit 1
+          fi
+          echo "IPA location: $IPA_PATH"
+
+      - name: Upload Signed IPA to Workflow Artifacts
+        uses: actions/upload-artifact@v4.6.1
+        with:
+          name: MagicBlockBlitz2026-iOS-Release
+          path: ${{ env.TARGET_DIR }}/ios/App/output/*.ipa
+
+      - name: Upload to TestFlight / App Store Connect
+        if: success()
+        working-directory: ${{ env.TARGET_DIR }}
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID || vars.APP_STORE_CONNECT_KEY_ID || 'C6HLRTWSC2' }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID || vars.APP_STORE_CONNECT_ISSUER_ID || '2e4974f6-27d6-476e-9322-0a79cff7bf00' }}
+          KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT || secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          BUILD_NOTES: ${{ inputs.build_notes }}
+        run: |
+          API_KEYS_DIR=~/.appstoreconnect/private_keys
+          mkdir -p "$API_KEYS_DIR"
+          KEY_FILE="$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
+          
+          if [ -z "$KEY_CONTENT" ]; then
+            echo "❌ Error: APP_STORE_CONNECT_KEY_CONTENT secret is missing or empty."
+            exit 1
+          fi
+
+          # Smart decode: Handles raw PEM text, Base64 strings, or multi-line GitHub secrets
+          CLEAN_KEY=$(echo "$KEY_CONTENT" | tr -d '\r')
+          if echo "$CLEAN_KEY" | grep -q "BEGIN PRIVATE KEY"; then
+            echo "$CLEAN_KEY" > "$KEY_FILE"
+          else
+            echo "$CLEAN_KEY" | base64 --decode > "$KEY_FILE" 2>/dev/null || echo "$CLEAN_KEY" > "$KEY_FILE"
+          fi
+
+          # Ensure strict Unix line endings (\n) and permissions required by Apple altool
+          sed -i '' 's/\r$//' "$KEY_FILE" 2>/dev/null || sed -i 's/\r$//' "$KEY_FILE" 2>/dev/null || true
+          chmod 600 "$KEY_FILE"
+
+          # Verify header structure
+          if ! grep -q "BEGIN PRIVATE KEY" "$KEY_FILE"; then
+            echo "❌ Error: Key file does not contain a valid '-----BEGIN PRIVATE KEY-----' header."
+            echo "Please check GitHub Secret 'APP_STORE_CONNECT_KEY_CONTENT'."
+            exit 1
+          fi
+
+          IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
+          if [ -z "$IPA_PATH" ]; then
+            echo "❌ Error: No IPA package found to upload."
+            exit 1
+          fi
+
+          echo "Uploading $IPA_PATH to App Store Connect..."
+          echo "Build notes: $BUILD_NOTES"
+          xcrun altool --upload-app \
+            -t ios \
+            -f "$IPA_PATH" \
+            --apiKey "$KEY_ID" \
+            --apiIssuer "$ISSUER_ID"

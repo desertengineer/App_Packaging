@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Magic Block Blitz 2026</string>
-    <string name="title_activity_main">Magic Block Blitz 2026</string>
-    <string name="package_name">com.bekeirataapps.magicblitzblitz2026</string>
-    <string name="custom_url_scheme">com.bekeirataapps.magicblitzblitz2026</string>
-</resources>
