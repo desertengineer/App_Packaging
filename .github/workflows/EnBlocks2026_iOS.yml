@@ -1,122 +1,20 @@
-name: Build Magic Block Blitz 2026
+name: Build Magic Block Blitz 2026 (iOS Only)
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'EnBlocks/**'
-      - '.github/workflows/MagicBlockBlitz2026_Packages.yml'
+      - "EnBlocks/**"
+      - ".github/workflows/MagicBlockBlitz2026_Packages.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  build-android:
-    runs-on: ubuntu-latest
-    environment: MagicBlockBlitz-Environment
-    defaults:
-      run:
-        working-directory: ${{ vars.MONOREPO_DIRECTORY || 'EnBlocks/' }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4.2.2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4.2.0
-        with:
-          node-version: 22
-
-      - name: Prepare Web Directory
-        run: |
-          mkdir -p dist
-          cp www/index.html www/index.js www/index.css www/manifest.json www/service-worker.js dist/ || true
-          cp -r www/assets dist/ || true
-
-      - name: Install Dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci --prefer-offline --no-audit --progress=false
-          else
-            npm install --no-audit --no-fund --no-progress
-          fi
-
-      - name: Inject Capacitor Configuration (App Store Alignment)
-        run: |
-          cat << 'EOF' > capacitor.config.json
-          {
-            "appId": "${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}",
-            "appName": "${{ vars.APP_NAME || 'Magic Block Blitz 2026' }}",
-            "webDir": "dist"
-          }
-          EOF
-
-      - name: Initialize or Sync Android Platform
-        run: |
-          if [ ! -d "android" ]; then
-            npx --yes --package @capacitor/cli@6 cap add android
-          else
-            npx --yes --package @capacitor/cli@6 cap sync android
-          fi
-
-      - name: Generate Native Android Icons & Assets
-        run: |
-          if [ -f "assets/icon.png" ]; then
-            npx --yes @capacitor/assets generate --android || true
-          fi
-
-      - name: Setup Java (Zulu OpenJDK 17)
-        uses: actions/setup-java@v4.4.0
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Ensure Gradle Wrapper Executable
-        run: |
-          if [ -f android/gradlew ]; then
-            chmod +x android/gradlew || true
-          fi
-
-      - name: Decode Android Keystore
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
-
-      - name: Build and Sign Release APK via Gradle
-        env:
-          ORG_GRADLE_PROJECT_androidInjectedSigningStoreFile: ${{ github.workspace }}/${{ vars.MONOREPO_DIRECTORY || 'EnBlocks/' }}android/app/release.keystore
-          ORG_GRADLE_PROJECT_androidInjectedSigningStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ORG_GRADLE_PROJECT_androidInjectedSigningKeyAlias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ORG_GRADLE_PROJECT_androidInjectedSigningKeyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          cd android
-          if [ -f ./gradlew ]; then
-            ./gradlew assembleRelease --no-daemon --console=plain
-          else
-            echo "gradlew not found"
-            exit 1
-          fi
-
-      - name: Locate and Package Android Artifact
-        run: |
-          mkdir -p final_output
-          APK_AAB_PATH=$(find android/app/build/outputs -type f \( -name "*.apk" -o -name "*.aab" \) | head -n 1 || true)
-          if [ -n "$APK_AAB_PATH" ]; then
-            echo "Found artifact: $APK_AAB_PATH"
-            EXT="${APK_AAB_PATH##*.}"
-            cp "$APK_AAB_PATH" final_output/MagicBlockBlitz2026-Final.$EXT
-          else
-            echo "No build artifact found"
-            exit 1
-          fi
-
-      - name: Upload Verified Android Artifact
-        uses: actions/upload-artifact@v4.6.1
-        with:
-          name: MagicBlockBlitz2026-Android-Release
-          path: final_output/MagicBlockBlitz2026-Final.*
-
   build-ios:
+    name: Build & Deploy iOS Package
     runs-on: macos-latest
     environment: MagicBlockBlitz-Environment
     defaults:
@@ -131,11 +29,14 @@ jobs:
         with:
           node-version: 22
 
-      - name: Prepare Web Directory
+      - name: Prepare Web Directory (Root EnBlocks Layout)
         run: |
           mkdir -p dist
-          cp www/index.html www/index.js www/index.css www/manifest.json www/service-worker.js dist/ || true
-          cp -r www/assets dist/ || true
+          cp -f index.html index.js index.css manifest.json service-worker.js dist/ 2>/devnull || true
+          if [ -d "assets" ]; then
+            cp -r assets dist/ 2>/devnull || true
+          fi
+          echo "Web build assets successfully prepared in dist/"
 
       - name: Install Dependencies
         run: |
@@ -206,7 +107,7 @@ jobs:
           PLIST_PATH=$RUNNER_TEMP/profile.plist
           echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
           security cms -D -i "$PP_PATH" > $PLIST_PATH
-          
+
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $PLIST_PATH)
           TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" $PLIST_PATH || echo "$FALLBACK_TEAM_ID")
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" $PLIST_PATH)
@@ -215,12 +116,12 @@ jobs:
           if [ -z "$BUNDLE_ID" ] || [ "$BUNDLE_ID" = "*" ]; then
             BUNDLE_ID="$FALLBACK_BUNDLE_ID"
           fi
-          
+
           echo "APPLE_TEAM_ID=$TEAM_ID" >> $GITHUB_ENV
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
           echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
           echo "BUNDLE_ID=$BUNDLE_ID" >> $GITHUB_ENV
-          
+
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
           echo "Provisioning Profile Installed: $PROFILE_NAME ($PROFILE_UUID) for Bundle: $BUNDLE_ID (Team:$TEAM_ID)"
@@ -315,9 +216,9 @@ jobs:
           mkdir -p "$API_KEYS_DIR"
           echo "$KEY_CONTENT" > "$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
           chmod 600 "$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
-          
+
           IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
-          
+
           echo "Uploading $IPA_PATH to App Store Connect..."
           xcrun altool --upload-app \
             -t ios \
