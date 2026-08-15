@@ -257,3 +257,4 @@ jobs:
             -t ios \
             -f "$IPA_PATH" \
             --apiKey "$KEY_ID" \
+            --apiIssuer "$ISSUER_ID"
