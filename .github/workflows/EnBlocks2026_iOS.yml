@@ -38,13 +38,15 @@ jobs:
           fi
           echo "Web build assets successfully prepared in dist/"
 
-      - name: Install Dependencies
+      - name: Install Dependencies & Capacitor iOS Platform
         run: |
           if [ -f package-lock.json ]; then
             npm ci --prefer-offline --no-audit --progress=false
           else
             npm install --no-audit --no-fund --no-progress
           fi
+          # Explicitly ensure @capacitor/core and @capacitor/ios are present
+          npm install @capacitor/core@^6.0.0 @capacitor/ios@^6.0.0 --save
 
       - name: Inject Capacitor Configuration
         run: |
@@ -59,10 +61,9 @@ jobs:
       - name: Sync iOS Native Platform
         run: |
           if [ ! -d "ios" ]; then
-            npx --yes --package @capacitor/cli@6 cap add ios
-          else
-            npx --yes --package @capacitor/cli@6 cap sync ios
+            npx cap add ios
           fi
+          npx cap sync ios
 
       - name: Generate Native iOS App Icons & Assets
         run: |
