@@ -19,8 +19,6 @@ jobs:
       - name: Prepare Web Directory & Validate Assets
         run: |
           mkdir -p dist
-          
-          # Copy core web files if they exist in current directory
           for f in index.html Index.html INDEX.HTML index.js index.css manifest.json service-worker.js; do
             if [ -f "$f" ]; then
               cp -f "$f" dist/
@@ -28,13 +26,11 @@ jobs:
             fi
           done
 
-          # Copy assets folder if present
           if [ -d "assets" ]; then
             cp -r assets dist/
             echo "Copied assets/ to dist/assets/"
           fi
 
-          # Ensure index.html exists in dist/
           if [ ! -f "dist/index.html" ]; then
             echo "Error: index.html not found in EnBlocks root or failed to copy into dist!"
             echo "Listing current directory files:"
