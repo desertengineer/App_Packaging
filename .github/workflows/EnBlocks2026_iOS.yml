@@ -19,7 +19,7 @@ jobs:
     environment: MagicBlockBlitz-Environment
     defaults:
       run:
-        working-directory: ${{ vars.MONOREPO_DIRECTORY || 'EnBlocks/' }}
+        working-directory: EnBlocks
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4.2.2
