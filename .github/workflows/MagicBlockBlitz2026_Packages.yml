@@ -22,19 +22,19 @@ jobs:
 
       - name: Determine Target Directory
         run: |
-      RAW_DIR="${{ vars.MONOREPO_DIRECTORY }}"
-      RAW_DIR="${RAW_DIR%/}"
-      
-      if [ -n "$RAW_DIR" ] && [ -d "$RAW_DIR" ]; then
-        TARGET_DIR="$RAW_DIR"
-      elif [ -d "EnBlocks" ]; then
-        TARGET_DIR="EnBlocks"
-      else
-        TARGET_DIR="."
-      fi
-      
-      echo "Target Working Directory resolved to: $TARGET_DIR"
-      echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
+          RAW_DIR="${{ vars.MONOREPO_DIRECTORY }}"
+          RAW_DIR="${RAW_DIR%/}"
+          
+          if [ -n "$RAW_DIR" ] && [ -d "$RAW_DIR" ]; then
+            TARGET_DIR="$RAW_DIR"
+          elif [ -d "EnBlocks" ]; then
+            TARGET_DIR="EnBlocks"
+          else
+            TARGET_DIR="."
+          fi
+          
+          echo "Target Working Directory resolved to: $TARGET_DIR"
+          echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
 
       - name: Setup Node.js
         uses: actions/setup-node@v4.2.0
@@ -381,40 +381,40 @@ jobs:
           API_KEYS_DIR=~/.appstoreconnect/private_keys
           mkdir -p "$API_KEYS_DIR"
           KEY_FILE="$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
-      
-      if [ -z "$KEY_CONTENT" ]; then
-        echo "❌ Error: APP_STORE_CONNECT_KEY_CONTENT secret is missing or empty."
-        exit 1
-      fi
 
-      CLEAN_KEY=$(echo "$KEY_CONTENT" | tr -d '\r')
-      if echo "$CLEAN_KEY" | grep -q "BEGIN PRIVATE KEY"; then
-        echo "$CLEAN_KEY" > "$KEY_FILE"
-      else
-        echo "$CLEAN_KEY" \vert{} base64 --decode > "$KEY_FILE" 2>/dev/null || echo "$CLEAN_KEY" > "$KEY_FILE"
-      fi
+          if [ -z "$KEY_CONTENT" ]; then
+            echo "❌ Error: APP_STORE_CONNECT_KEY_CONTENT secret is missing or empty."
+            exit 1
+          fi
 
-      sed -i '' 's/\r$//' "$KEY_FILE" 2>/dev/null || sed -i 's/\r$//' "$KEY_FILE" 2>/dev/null || true
-      chmod 600 "$KEY_FILE"
+          CLEAN_KEY=$(echo "$KEY_CONTENT" | tr -d '\r')
+          if echo "$CLEAN_KEY" | grep -q "BEGIN PRIVATE KEY"; then
+            echo "$CLEAN_KEY" > "$KEY_FILE"
+          else
+            echo "$CLEAN_KEY" | base64 --decode > "$KEY_FILE" 2>/dev/null || echo "$CLEAN_KEY" > "$KEY_FILE"
+          fi
 
-      if ! grep -q "BEGIN PRIVATE KEY" "$KEY_FILE"; then
-        echo "❌ Error: Key file does not contain a valid '-----BEGIN PRIVATE KEY-----' header."
-        exit 1
-      fi
+          sed -i '' 's/\r$//' "$KEY_FILE" 2>/dev/null || sed -i 's/\r$//' "$KEY_FILE" 2>/dev/null || true
+          chmod 600 "$KEY_FILE"
 
-      IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
-      if [ -z "$IPA_PATH" ]; then
-        echo "❌ Error: No IPA package found to upload."
-        exit 1
-      fi
+          if ! grep -q "BEGIN PRIVATE KEY" "$KEY_FILE"; then
+            echo "❌ Error: Key file does not contain a valid '-----BEGIN PRIVATE KEY-----' header."
+            exit 1
+          fi
 
-      echo "Uploading $IPA_PATH to App Store Connect..."
-      echo "Build notes: $BUILD_NOTES"
-      
-      # Prioritizing modern App Store Connect API upload methodology
-      xcrun altool --upload-app \
-        -t ios \
-        -f "$IPA_PATH" \
-        --apiKey "$KEY_ID" \
-        --apiIssuer "$ISSUER_ID" || \
-      echo "⚠️ If altool is deprecated in this Xcode version, ensure you migrate to xcrun iTMSTransporter or Fastlane for future submissions."
+          IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
+          if [ -z "$IPA_PATH" ]; then
+            echo "❌ Error: No IPA package found to upload."
+            exit 1
+          fi
+
+          echo "Uploading $IPA_PATH to App Store Connect..."
+          echo "Build notes: $BUILD_NOTES"
+
+          # Prioritizing modern App Store Connect API upload methodology
+          xcrun altool --upload-app \
+            -t ios \
+            -f "$IPA_PATH" \
+            --apiKey "$KEY_ID" \
+            --apiIssuer "$ISSUER_ID" || \
+          echo "⚠️ If altool is deprecated in this Xcode version, ensure you migrate to xcrun iTMSTransporter or Fastlane for future submissions."
