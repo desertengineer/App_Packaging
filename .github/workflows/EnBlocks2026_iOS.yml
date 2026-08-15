@@ -29,14 +29,32 @@ jobs:
         with:
           node-version: 22
 
-      - name: Prepare Web Directory (Root EnBlocks Layout)
+      - name: Prepare Web Directory & Validate Assets
         run: |
           mkdir -p dist
-          cp -f index.html index.js index.css manifest.json service-worker.js dist/ 2>/devnull || true
+          
+          # Copy core web files if they exist in current directory
+          for f in index.html Index.html INDEX.HTML index.js index.css manifest.json service-worker.js; do
+            if [ -f "$f" ]; then
+              cp -f "$f" dist/
+              echo "Copied $f to dist/"
+            fi
+          done
+
+          # Copy assets folder if present
           if [ -d "assets" ]; then
-            cp -r assets dist/ 2>/devnull || true
+            cp -r assets dist/
+            echo "Copied assets/ to dist/assets/"
           fi
-          echo "Web build assets successfully prepared in dist/"
+
+          # Ensure index.html exists in dist/
+          if [ ! -f "dist/index.html" ]; then
+            echo "❌ Error: index.html not found in EnBlocks root or failed to copy into dist/!"
+            echo "Listing current directory files:"
+            ls -la
+            exit 1
+          fi
+          echo "Web build assets successfully validated and prepared in dist/."
 
       - name: Install Dependencies & Capacitor iOS Platform
         run: |
@@ -45,7 +63,6 @@ jobs:
           else
             npm install --no-audit --no-fund --no-progress
           fi
-          # Explicitly ensure @capacitor/core and @capacitor/ios are present
           npm install @capacitor/core@^6.0.0 @capacitor/ios@^6.0.0 --save
 
       - name: Inject Capacitor Configuration
