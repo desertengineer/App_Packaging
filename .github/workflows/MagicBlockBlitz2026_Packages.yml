@@ -29,8 +29,8 @@ jobs:
             TARGET_DIR="$RAW_DIR"
           elif [ -d "EnBlocks2026" ]; then
             TARGET_DIR="EnBlocks2026"
-          elif [ -d "apps/EnBlocks2026" ]; then
-            TARGET_DIR="apps/EnBlocks2026"
+          elif [ -d "EnBlocks2026" ]; then
+            TARGET_DIR="EnBlocks2026"
           else
             TARGET_DIR="."
           fi
