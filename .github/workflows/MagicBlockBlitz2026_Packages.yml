@@ -135,18 +135,12 @@ jobs:
     runs-on: macos-latest
     environment: MagicBlockBlitz-Environment
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4.2.2
       - name: Step 1 - Prepare the HTML5 Game
         run: |
-          RAW_DIR="${{ vars.MONOREPO_DIRECTORY }}"
-          RAW_DIR="${RAW_DIR%/}"
-          
-          if [ -n "$RAW_DIR" ] && [ -d "$RAW_DIR" ]; then
-            TARGET_DIR="$RAW_DIR"
-          elif [ -d "EnBlocks" ]; then
-            TARGET_DIR="EnBlocks"
-          else
-            TARGET_DIR="."
-          fi
+          # Use hardcoded path to match repository structure
+          TARGET_DIR="EnBlocks"
           
           echo "Target Working Directory resolved to: $TARGET_DIR"
           echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
@@ -156,17 +150,22 @@ jobs:
         with:
           node-version: 22
 
-      - name: Prepare Web Directory (HTML5 Build)
+      - name: Install Dependencies
         working-directory: ${{ env.TARGET_DIR }}
         run: |
-          mkdir -p dist
-          cp www/index.html www/index.js www/index.css www/manifest.json www/service-worker.js dist/ || true
-          cp -r www/assets dist/ || true
           if [ -f package-lock.json ]; then
             npm ci --prefer-offline --no-audit --progress=false
           else
             npm install --no-audit --no-fund --no-progress
           fi
+
+      - name: Prepare Web Directory (HTML5 Build)
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          mkdir -p dist
+          # Make paths relative to TARGET_DIR and use -f to force overwrite, ignoring errors if missing
+          cp -f www/index.html www/index.js www/index.css www/manifest.json www/service-worker.js dist/ || true
+          cp -R www/assets dist/ || true
 
       - name: Step 2 - Generate the iOS Project with Capacitor
         working-directory: ${{ env.TARGET_DIR }}
