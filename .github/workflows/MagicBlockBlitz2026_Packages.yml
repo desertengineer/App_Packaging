@@ -47,7 +47,7 @@ jobs:
         working-directory: ${{ env.TARGET_DIR }}
         run: |
           mkdir -p dist
-          cp www/index.html www/index.js www/index.css www/manifest.json www/service-worker.js dist/ || true
+          cp www/index.html www/index.js www/index.css dist/ || true
           cp -r www/assets dist/ || true
 
       - name: Install Dependencies
