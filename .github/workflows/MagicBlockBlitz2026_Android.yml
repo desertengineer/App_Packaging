@@ -131,10 +131,6 @@ jobs:
         with:
           name: MagicBlockBlitz2026-Android-Release
           path: ${{ env.TARGET_DIR }}/final_output/MagicBlockBlitz2026-Final.*
-  build-ios:
-    runs-on: macos-latest
-    environment: MagicBlockBlitz-Environment
-    steps:
       - name: Checkout Code
         uses: actions/checkout@v4.2.2
       - name: Step 1 - Prepare the HTML5 Game
