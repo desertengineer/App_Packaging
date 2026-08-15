@@ -36,36 +36,32 @@ jobs:
           echo "--- EnBlocks Directory Contents ---"
           ls -la EnBlocks/ || echo "❌ EnBlocks folder not found!"
           echo "--- EnBlocks/www Directory Contents ---"
-          ls -la EnBlocks/www/ || echo "❌ www folder not found! (Check your .gitignore file!)"
+          ls -la EnBlocks/www/ || echo "❌ www folder not found on GitHub! Please check your local .gitignore file, commit the folder, and push!"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4.2.0
         with:
           node-version: 22
 
-      - name: Prepare Web Directory & Validate Assets
+      - name: Step 1 - Prepare the HTML5 Game (Validate Assets)
         working-directory: ./EnBlocks
         run: |
-          echo "Current path: $(pwd)"
-          
           if [ ! -d "www" ]; then
-            echo "Error: 'www' directory not found inside $(pwd)!"
-            echo "This usually means it was not committed to GitHub. Please check your .gitignore file!"
+            echo "❌ Error: 'www' directory not found inside $(pwd)!"
+            echo "Git did not upload your www folder. Please remove 'www' from your .gitignore file, commit, and push again."
             exit 1
           fi
 
           mkdir -p dist
-          cp -R www/* dist/ || echo "Warning: Failed to copy some files, but continuing..."
+          cp -R www/* dist/ || echo "Warning: Failed to copy some files, continuing..."
 
-          # Ensure index.html exists in dist/
           if [ ! -f "dist/index.html" ]; then
-            echo "Error: index.html failed to copy into dist/!"
+            echo "❌ Error: index.html failed to copy into dist/!"
             exit 1
           fi
-          
-          echo "Web build assets successfully validated and prepared in dist/."
+          echo "✅ Web build assets successfully validated and prepared in dist/."
 
-      - name: Install Dependencies & Capacitor iOS Platform
+      - name: Install Node Dependencies
         working-directory: ./EnBlocks
         run: |
           if [ -f package-lock.json ]; then
@@ -75,7 +71,7 @@ jobs:
           fi
           npm install @capacitor/core@^6.0.0 @capacitor/ios@^6.0.0 --save
 
-      - name: Inject Capacitor Configuration
+      - name: Step 2 - Generate the iOS Project with Capacitor
         working-directory: ./EnBlocks
         run: |
           cat << 'EOF' > capacitor.config.json
@@ -85,46 +81,22 @@ jobs:
             "webDir": "dist"
           }
           EOF
-
-      - name: Sync iOS Native Platform
-        working-directory: ./EnBlocks
-        run: |
+          
           if [ ! -d "ios" ]; then
             npx cap add ios
           fi
           npx cap sync ios
 
-      - name: Generate Native iOS App Icons & Assets
-        working-directory: ./EnBlocks
-        run: |
-          mkdir -p assets
-          if [ -f "www/assets/icon.png" ]; then
-            cp www/assets/icon.png assets/icon.png
-          fi
-
-          if [ -f "assets/icon.png" ]; then
-            npx --yes @capacitor/assets generate --ios
-            echo "Native iOS icons generated successfully from assets/icon.png"
-          else
-            echo "Warning: assets/icon.png not found; skipping automated asset generation."
-          fi
-
-      - name: Set Export Compliance in Info.plist
-        working-directory: ./EnBlocks
-        run: |
-          PLIST_PATH="ios/App/App/Info.plist"
-          if [ -f "$PLIST_PATH" ]; then
-            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST_PATH" 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST_PATH"
-            echo "ITSAppUsesNonExemptEncryption successfully configured as false."
-          fi
-
-      - name: Import Apple Certificate to Keychain
+      - name: Step 3 - Configure the Generated Project in Xcode (Signing & Metadata)
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 || secrets.APPLE_DISTRIBUTION_CERT_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS || secrets.P12_PASSWORD }}
           KEYCHAIN_PASSWORD: "temp_keychain_pass_${{ github.run_id }}"
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE || secrets.APPLE_PROVISION_PROFILE || secrets.PROVISIONING_PROFILE_BASE64 }}
+          FALLBACK_BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
+          FALLBACK_TEAM_ID: ${{ vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID || 'XHNXQ72KYZ' }}
         run: |
+          # 1. Setup Keychain and Certificate
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           echo -n "$BUILD_CERTIFICATE_BASE64" \vert{} base64 --decode -o $CERTIFICATE_PATH
@@ -134,12 +106,7 @@ jobs:
           security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           security list-keychains -d user -s $KEYCHAIN_PATH
 
-      - name: Install Provisioning Profile & Extract Metadata
-        env:
-          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE || secrets.APPLE_PROVISION_PROFILE || secrets.PROVISIONING_PROFILE_BASE64 }}
-          FALLBACK_BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
-          FALLBACK_TEAM_ID: ${{ vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID || 'XHNXQ72KYZ' }}
-        run: |
+          # 2. Setup Provisioning Profile
           PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
           PLIST_PATH=$RUNNER_TEMP/profile.plist
           echo -n "$BUILD_PROVISION_PROFILE_BASE64" \vert{} base64 --decode -o $PP_PATH
@@ -162,17 +129,60 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
 
-      - name: Install CocoaPods Dependencies
-        working-directory: ./EnBlocks/ios/App
-        run: |
-          pod install || pod repo update && pod install
+          # 3. Configure Encryption Compliance (Info.plist)
+          PLIST_PATH="EnBlocks/ios/App/App/Info.plist"
+          if [ -f "$PLIST_PATH" ]; then
+            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST_PATH" 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST_PATH"
+          fi
 
-      - name: Build and Archive iOS App
+          # 4. Configure Xcode Signing
+          PBXPROJ="EnBlocks/ios/App/App.xcodeproj/project.pbxproj"
+          if [ -f "$PBXPROJ" ]; then
+            sed -i '' 's/CODE_SIGN_STYLE = .*/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ" || true
+            sed -i '' "s/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = ${TEAM_ID};/g" "$PBXPROJ" || true
+            sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = \"${PROFILE_UUID}\";/g" "$PBXPROJ" || true
+          fi
+
+      - name: Step 4 - Add App Resources and Native SDKs
+        working-directory: ./EnBlocks
+        run: |
+          mkdir -p assets
+          if [ -f "www/assets/icon.png" ]; then
+            cp www/assets/icon.png assets/icon.png
+            npx --yes @capacitor/assets generate --ios
+            echo "✅ Native iOS App Icons Generated."
+          else
+            echo "⚠️ Warning: assets/icon.png not found; skipping icon generation."
+          fi
+
+          cd ios/App
+          pod install || pod repo update && pod install
+          
+          # Force Pods to not require manual signing
+          if [ -f Pods/Pods.xcodeproj/project.pbxproj ]; then
+            sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' Pods/Pods.xcodeproj/project.pbxproj || true
+          fi
+
+      - name: Step 5 - Test the Application (Simulator Verification)
         working-directory: ./EnBlocks/ios/App
         env:
-          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID || vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID }}
-          PROFILE_UUID: ${{ env.PROFILE_UUID }}
-          BUNDLE_ID: ${{ env.BUNDLE_ID }}
+          XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+        run: |
+          echo "Running a dry-run build on the iOS Simulator to verify architecture and integrity..."
+          xcodebuild build \
+            -workspace App.xcworkspace \
+            -scheme "${XCODE_SCHEME}" \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            -quiet
+          echo "✅ Simulator Verification Passed."
+
+      - name: Step 6 - Archive the Application
+        working-directory: ./EnBlocks/ios/App
+        env:
+          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
           XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
         run: |
           xcodebuild archive \
@@ -183,19 +193,11 @@ jobs:
             -derivedDataPath $RUNNER_TEMP/DerivedData \
             CODE_SIGN_STYLE="Manual" \
             DEVELOPMENT_TEAM="${APPLE_TEAM_ID}" \
-            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_UUID}" \
-            PRODUCT_BUNDLE_IDENTIFIER="${BUNDLE_ID}" \
+            PROVISIONING_PROFILE_SPECIFIER="${{ env.PROFILE_UUID }}" \
+            PRODUCT_BUNDLE_IDENTIFIER="${{ env.BUNDLE_ID }}" \
             -quiet
 
-      - name: Ensure Export Compliance in Archive Info.plist
-        run: |
-          ARCHIVE_PLIST=$(find$RUNNER_TEMP/App.xcarchive -name "Info.plist" -type f | grep "App.app" || true)
-          if [ -n "$ARCHIVE_PLIST" ]; then
-            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$ARCHIVE_PLIST" 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$ARCHIVE_PLIST"
-          fi
-
-      - name: Export IPA Package
+      - name: Step 6.5 - Export IPA Package for Distribution
         working-directory: ./EnBlocks
         run: |
           mkdir -p ios/App/output
@@ -207,34 +209,32 @@ jobs:
             <key>method</key>
             <string>app-store</string>
             <key>teamID</key>
-            <string>${{ env.APPLE_TEAM_ID || vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID }}</string>
+            <string>${{ env.APPLE_TEAM_ID }}</string>
             <key>signingStyle</key>
             <string>manual</string>
             <key>compileBitcode</key>
             <false/>
             <key>provisioningProfiles</key>
             <dict>
-              <key>${BUNDLE_ID}</key>
-              <string>${PROFILE_UUID}</string>
+              <key>${{ env.BUNDLE_ID }}</key>
+              <string>${{ env.PROFILE_UUID }}</string>
             </dict>
           </dict>
           </plist>
           EOF
+          
           xcodebuild -exportArchive \
             -archivePath $RUNNER_TEMP/App.xcarchive \
             -exportOptionsPlist exportOptions.plist \
             -exportPath ios/App/output \
             -quiet
 
-      - name: Verify IPA Output
-        working-directory: ./EnBlocks
-        run: |
           IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
           if [ -z "$IPA_PATH" ]; then
-            echo "No IPA file found in output directory"
+            echo "❌ No IPA file found in output directory"
             exit 1
           fi
-          echo "IPA location: $IPA_PATH"
+          echo "✅ Exported IPA location: $IPA_PATH"
 
       - name: Upload Signed IPA to Workflow Artifacts
         uses: actions/upload-artifact@v4.6.1
@@ -242,7 +242,7 @@ jobs:
           name: MagicBlockBlitz2026-iOS-Release
           path: EnBlocks/ios/App/output/*.ipa
 
-      - name: Upload to TestFlight / App Store Connect
+      - name: Step 7 - Upload to App Store Connect
         if: success()
         working-directory: ./EnBlocks
         env:
@@ -252,6 +252,7 @@ jobs:
           VAR_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
           SECRET_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
           SECRET_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          BUILD_NOTES: ${{ inputs.build_notes }}
         run: |
           KEY_ID="${SECRET_KEY_ID:-${VAR_KEY_ID:-C6HLRTWSC2}}"
           ISSUER_ID="${SECRET_ISSUER_ID:-${VAR_ISSUER_ID:-2e4974f6-27d6-476e-9322-0a79cff7bf00}}"
