@@ -36,25 +36,24 @@ jobs:
         run: |
           mkdir -p dist
           
-          # Copy core web files if they exist in current directory
-          for f in index.html Index.html INDEX.HTML index.js index.css manifest.json service-worker.js; do
-            if [ -f "$f" ]; then
-              cp -f "$f" dist/
-              echo "Copied $f to dist/"
+          # Copy core web files if they exist in the www directory
+          for f in index.html index.js index.css manifest.json service-worker.js; do
+            if [ -f "www/$f" ]; then
+              cp -f "www/$f" dist/
+              echo "Copied www/$f to dist/"
             fi
           done
 
           # Copy assets folder if present
-          if [ -d "assets" ]; then
-            cp -r assets dist/
-            echo "Copied assets/ to dist/assets/"
+          if [ -d "www/assets" ]; then
+            cp -r www/assets dist/
+            echo "Copied www/assets/ to dist/assets/"
           fi
 
           # Ensure index.html exists in dist/
           if [ ! -f "dist/index.html" ]; then
-            echo "Error: index.html not found in EnBlocks root or failed to copy into dist!"
-            echo "Listing current directory files:"
-            ls -la
+            echo "Error: index.html not found in EnBlocks/www/ or failed to copy into dist!"
+            ls -la www/ || echo "www folder not found"
             exit 1
           fi
           echo "Web build assets successfully validated and prepared in dist/."
@@ -87,6 +86,12 @@ jobs:
 
       - name: Generate Native iOS App Icons & Assets
         run: |
+          # Create assets directory if it doesn't exist for the generator
+          mkdir -p assets
+          if [ -f "www/assets/icon.png" ]; then
+            cp www/assets/icon.png assets/icon.png
+          fi
+
           if [ -f "assets/icon.png" ]; then
             npx --yes @capacitor/assets generate --ios
             echo "Native iOS icons generated successfully from assets/icon.png"
@@ -224,7 +229,7 @@ jobs:
         uses: actions/upload-artifact@v4.6.1
         with:
           name: MagicBlockBlitz2026-iOS-Release
-          path: ios/App/output/*.ipa
+          path: EnBlocks/ios/App/output/*.ipa
 
       - name: Upload to TestFlight / App Store Connect
         if: success()
@@ -252,4 +257,3 @@ jobs:
             -t ios \
             -f "$IPA_PATH" \
             --apiKey "$KEY_ID" \
-            --apiIssuer "$ISSUER_ID"
