@@ -1,4 +1,4 @@
-name: Build Magic Block Blitz 2026
+name: Build EnBlocks - Android
 
 on:
   workflow_dispatch:
