@@ -16,9 +16,11 @@ jobs:
   build-ios:
     runs-on: macos-latest
     environment: MagicBlockBlitz-Environment
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4.2.2
+
       - name: Step 1 - Prepare the HTML5 Game
         run: |
           # Use hardcoded path to match repository structure
@@ -27,38 +29,44 @@ jobs:
           echo "Target Working Directory resolved to: $TARGET_DIR"
           echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
 
+      - name: Debug Workspace & File Structure
+        run: |
+          echo "--- Root Directory Contents ---"
+          ls -la
+          echo "--- EnBlocks Directory Contents ---"
+          ls -la EnBlocks/ || echo "❌ EnBlocks folder not found!"
+          echo "--- EnBlocks/www Directory Contents ---"
+          ls -la EnBlocks/www/ || echo "❌ www folder not found! (Check your .gitignore file!)"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4.2.0
         with:
           node-version: 22
 
       - name: Prepare Web Directory & Validate Assets
+        working-directory: ./EnBlocks
         run: |
-          mkdir -p dist
+          echo "Current path: $(pwd)"
           
-          # Copy core web files if they exist in the www directory
-          for f in index.html index.js index.css manifest.json service-worker.js; do
-            if [ -f "www/$f" ]; then
-              cp -f "www/$f" dist/
-              echo "Copied www/$f to dist/"
-            fi
-          done
-
-          # Copy assets folder if present
-          if [ -d "www/assets" ]; then
-            cp -r www/assets dist/
-            echo "Copied www/assets/ to dist/assets/"
+          if [ ! -d "www" ]; then
+            echo "Error: 'www' directory not found inside $(pwd)!"
+            echo "This usually means it was not committed to GitHub. Please check your .gitignore file!"
+            exit 1
           fi
+
+          mkdir -p dist
+          cp -R www/* dist/ || echo "Warning: Failed to copy some files, but continuing..."
 
           # Ensure index.html exists in dist/
           if [ ! -f "dist/index.html" ]; then
-            echo "Error: index.html not found in EnBlocks/www/ or failed to copy into dist!"
-            ls -la www/ || echo "www folder not found"
+            echo "Error: index.html failed to copy into dist/!"
             exit 1
           fi
+          
           echo "Web build assets successfully validated and prepared in dist/."
 
       - name: Install Dependencies & Capacitor iOS Platform
+        working-directory: ./EnBlocks
         run: |
           if [ -f package-lock.json ]; then
             npm ci --prefer-offline --no-audit --progress=false
@@ -68,6 +76,7 @@ jobs:
           npm install @capacitor/core@^6.0.0 @capacitor/ios@^6.0.0 --save
 
       - name: Inject Capacitor Configuration
+        working-directory: ./EnBlocks
         run: |
           cat << 'EOF' > capacitor.config.json
           {
@@ -78,6 +87,7 @@ jobs:
           EOF
 
       - name: Sync iOS Native Platform
+        working-directory: ./EnBlocks
         run: |
           if [ ! -d "ios" ]; then
             npx cap add ios
@@ -85,8 +95,8 @@ jobs:
           npx cap sync ios
 
       - name: Generate Native iOS App Icons & Assets
+        working-directory: ./EnBlocks
         run: |
-          # Create assets directory if it doesn't exist for the generator
           mkdir -p assets
           if [ -f "www/assets/icon.png" ]; then
             cp www/assets/icon.png assets/icon.png
@@ -100,6 +110,7 @@ jobs:
           fi
 
       - name: Set Export Compliance in Info.plist
+        working-directory: ./EnBlocks
         run: |
           PLIST_PATH="ios/App/App/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
@@ -150,21 +161,20 @@ jobs:
           
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
-          echo "Provisioning Profile Installed: $PROFILE_NAME ($PROFILE_UUID) for Bundle: $BUNDLE_ID (Team:$TEAM_ID)"
 
       - name: Install CocoaPods Dependencies
+        working-directory: ./EnBlocks/ios/App
         run: |
-          cd ios/App
           pod install || pod repo update && pod install
 
       - name: Build and Archive iOS App
+        working-directory: ./EnBlocks/ios/App
         env:
           APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID || vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID }}
           PROFILE_UUID: ${{ env.PROFILE_UUID }}
           BUNDLE_ID: ${{ env.BUNDLE_ID }}
           XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
         run: |
-          cd ios/App
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme "${XCODE_SCHEME}" \
@@ -183,10 +193,10 @@ jobs:
           if [ -n "$ARCHIVE_PLIST" ]; then
             /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$ARCHIVE_PLIST" 2>/dev/null || \
             /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$ARCHIVE_PLIST"
-            echo "ITSAppUsesNonExemptEncryption ensured as false inside archive: $ARCHIVE_PLIST"
           fi
 
       - name: Export IPA Package
+        working-directory: ./EnBlocks
         run: |
           mkdir -p ios/App/output
           cat <<EOF > exportOptions.plist
@@ -217,6 +227,7 @@ jobs:
             -quiet
 
       - name: Verify IPA Output
+        working-directory: ./EnBlocks
         run: |
           IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
           if [ -z "$IPA_PATH" ]; then
@@ -233,6 +244,7 @@ jobs:
 
       - name: Upload to TestFlight / App Store Connect
         if: success()
+        working-directory: ./EnBlocks
         env:
           SECRET_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           VAR_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
