@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - 'EnBlocks/**'
-      - '.github/workflows/MagicBlockBlitz2026_Packages.yml'
+      - '.github/workflows/EnBlocks2026_iOS.yml'
   workflow_dispatch:
 
 permissions:
