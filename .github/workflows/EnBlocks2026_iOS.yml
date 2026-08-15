@@ -1,28 +1,15 @@
-name: Build Magic Block Blitz 2026 (iOS Only)
+﻿name: Build and Deploy iOS App
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'EnBlocks/**'
-      - '.github/workflows/EnBlocks2026_iOS.yml'
+    branches: [main, develop]
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   build-ios:
-    name: Build & Deploy iOS Package
     runs-on: macos-latest
-    environment: MagicBlockBlitz-Environment
-    defaults:
-      run:
-        working-directory: EnBlocks
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4.2.0
@@ -49,7 +36,7 @@ jobs:
 
           # Ensure index.html exists in dist/
           if [ ! -f "dist/index.html" ]; then
-            echo "❌ Error: index.html not found in EnBlocks root or failed to copy into dist/!"
+            echo "Error: index.html not found in EnBlocks root or failed to copy into dist!"
             echo "Listing current directory files:"
             ls -la
             exit 1
@@ -91,11 +78,11 @@ jobs:
             echo "Warning: assets/icon.png not found; skipping automated asset generation."
           fi
 
-      - name: Set Export Compliance in Info.plist (Auto-Bypass TestFlight Warning)
+      - name: Set Export Compliance in Info.plist
         run: |
           PLIST_PATH="ios/App/App/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
-            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST_PATH" 2>/devnull || \
+            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST_PATH" 2>/dev/null || \
             /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST_PATH"
             echo "ITSAppUsesNonExemptEncryption successfully configured as false."
           fi
@@ -173,7 +160,7 @@ jobs:
         run: |
           ARCHIVE_PLIST=$(find $RUNNER_TEMP/App.xcarchive -name "Info.plist" -type f | grep "App.app" || true)
           if [ -n "$ARCHIVE_PLIST" ]; then
-            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$ARCHIVE_PLIST" 2>/devnull || \
+            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$ARCHIVE_PLIST" 2>/dev/null || \
             /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$ARCHIVE_PLIST"
             echo "ITSAppUsesNonExemptEncryption ensured as false inside archive: $ARCHIVE_PLIST"
           fi
@@ -212,7 +199,7 @@ jobs:
         run: |
           IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
           if [ -z "$IPA_PATH" ]; then
-            echo "❌ No IPA file found in output directory"
+            echo "No IPA file found in output directory"
             exit 1
           fi
           echo "IPA location: $IPA_PATH"
