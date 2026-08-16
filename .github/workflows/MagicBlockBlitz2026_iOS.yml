@@ -163,6 +163,12 @@ jobs:
           if [ -z "$BUNDLE_ID" ] || [ "$BUNDLE_ID" = "*" ]; then
             BUNDLE_ID="$FALLBACK_BUNDLE_ID"
           fi
+
+          if [ -n "${FALLBACK_BUNDLE_ID:-}" ] && [ "$BUNDLE_ID" != "$FALLBACK_BUNDLE_ID" ]; then
+            echo "::error::Provisioning profile bundle ID mismatch. Profile says: $BUNDLE_ID, app expects: $FALLBACK_BUNDLE_ID. Update the provisioning profile or bundle identifier to match."
+            exit 1
+          fi
+
           echo "Bundle ID: ${BUNDLE_ID}"
           echo "Profile UUID: ${PROFILE_UUID}"
           echo "APPLE_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
@@ -184,6 +190,9 @@ jobs:
           if [ -f Pods/Pods.xcodeproj/project.pbxproj ]; then
             sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' Pods/Pods.xcodeproj/project.pbxproj || true
             sed -i '' 's/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = "";/g' Pods/Pods.xcodeproj/project.pbxproj || true
+            sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = "";/g' Pods/Pods.xcodeproj/project.pbxproj || true
+            sed -i '' 's/PROVISIONING_PROFILE = .*/PROVISIONING_PROFILE = "";/g' Pods/Pods.xcodeproj/project.pbxproj || true
+            sed -i '' 's/CODE_SIGN_STYLE = .*/CODE_SIGN_STYLE = Manual;/g' Pods/Pods.xcodeproj/project.pbxproj || true
           fi
           
           # Enforce Apple Privacy Manifest
@@ -218,6 +227,11 @@ jobs:
             sed -i '' 's/CODE_SIGN_STYLE = .*/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ" || true
             sed -i '' "s/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = ${{ env.APPLE_TEAM_ID }};/g" "$PBXPROJ" || true
             sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = \"${{ env.PROFILE_UUID }}\";/g" "$PBXPROJ" || true
+            sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER = .*/PRODUCT_BUNDLE_IDENTIFIER = ${{ env.BUNDLE_ID }};/g" "$PBXPROJ" || true
+          fi
+
+          if [ -f "App.xcodeproj/xcshareddata/xcschemes/App.xcscheme" ]; then
+            sed -i '' "s/BuildableIdentifier = \".*\"/BuildableIdentifier = \"primary\"/g" "App.xcodeproj/xcshareddata/xcschemes/App.xcscheme" || true
           fi
 
       - name: Step 5 - Test the Application (Simulator Verification)
@@ -240,6 +254,9 @@ jobs:
           APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
           XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
         run: |
+          echo "Archive bundle id: ${BUNDLE_ID}"
+          echo "Archive profile UUID: ${PROFILE_UUID}"
+
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme "${XCODE_SCHEME}" \
