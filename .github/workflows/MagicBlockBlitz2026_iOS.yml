@@ -189,8 +189,20 @@ jobs:
           pod install || pod repo update && pod install
           if [ -f Pods/Pods.xcodeproj/project.pbxproj ]; then
             echo "Clearing provisioning settings from CocoaPods targets before archive..."
-            perl -0pi -e 's/PROVISIONING_PROFILE_SPECIFIER = .*?;/PROVISIONING_PROFILE_SPECIFIER = "";/g; s/PROVISIONING_PROFILE = .*?;/PROVISIONING_PROFILE = "";/g; s/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g; s/DEVELOPMENT_TEAM = .*?;/DEVELOPMENT_TEAM = "";/g; s/CODE_SIGN_STYLE = .*?;/CODE_SIGN_STYLE = Automatic;/g' Pods/Pods.xcodeproj/project.pbxproj || true
-            grep -n "PROVISIONING_PROFILE\|CODE_SIGNING_ALLOWED\|DEVELOPMENT_TEAM" Pods/Pods.xcodeproj/project.pbxproj | head -n 20 || true
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            p = Path('Pods/Pods.xcodeproj/project.pbxproj')
+            text = p.read_text()
+            text = text.replace('CODE_SIGNING_ALLOWED = YES', 'CODE_SIGNING_ALLOWED = NO')
+            text = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = .*?;', 'PROVISIONING_PROFILE_SPECIFIER = "";', text)
+            text = re.sub(r'PROVISIONING_PROFILE = .*?;', 'PROVISIONING_PROFILE = "";', text)
+            text = re.sub(r'DEVELOPMENT_TEAM = .*?;', 'DEVELOPMENT_TEAM = "";', text)
+            text = re.sub(r'CODE_SIGN_STYLE = .*?;', 'CODE_SIGN_STYLE = Automatic;', text)
+            p.write_text(text)
+            PY
+            echo "Pods signing cleanup complete."
+            grep -n "PROVISIONING_PROFILE\|CODE_SIGNING_ALLOWED\|DEVELOPMENT_TEAM\|CODE_SIGN_STYLE" Pods/Pods.xcodeproj/project.pbxproj | head -n 40 || true
           fi
           
           # Enforce Apple Privacy Manifest
@@ -254,6 +266,12 @@ jobs:
         run: |
           echo "Archive bundle id: ${BUNDLE_ID}"
           echo "Archive profile UUID: ${PROFILE_UUID}"
+
+          if grep -q "PROVISIONING_PROFILE\|PROVISIONING_PROFILE_SPECIFIER" Pods/Pods.xcodeproj/project.pbxproj; then
+            echo "::error::Pods project still contains provisioning profile settings. Clearing failed."
+            grep -n "PROVISIONING_PROFILE\|PROVISIONING_PROFILE_SPECIFIER\|CODE_SIGNING_ALLOWED\|DEVELOPMENT_TEAM" Pods/Pods.xcodeproj/project.pbxproj | head -n 50 || true
+            exit 1
+          fi
 
           xcodebuild archive \
             -workspace App.xcworkspace \
