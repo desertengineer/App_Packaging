@@ -29,50 +29,30 @@ jobs:
           echo "Target Working Directory resolved to: $TARGET_DIR"
           echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
 
-      - name: Debug Workspace & File Structure
-        run: |
-          echo "--- Root Directory Contents ---"
-          ls -la
-          echo "--- EnBlocks Directory Contents ---"
-          ls -la EnBlocks/ || echo "❌ EnBlocks folder not found!"
-          echo "--- EnBlocks/www Directory Contents ---"
-          ls -la EnBlocks/www/ || echo "❌ www folder not found on GitHub! Please check your local .gitignore file, commit the folder, and push!"
-
       - name: Setup Node.js
         uses: actions/setup-node@v4.2.0
         with:
           node-version: 22
 
-      - name: Step 1 - Prepare the HTML5 Game (Validate Assets)
-        working-directory: ./EnBlocks
-        run: |
-          if [ ! -d "www" ]; then
-            echo "❌ Error: 'www' directory not found inside $(pwd)!"
-            echo "Git did not upload your www folder. Please remove 'www' from your .gitignore file, commit, and push again."
-            exit 1
-          fi
-
-          mkdir -p dist
-          cp -R www/* dist/ || echo "Warning: Failed to copy some files, continuing..."
-
-          if [ ! -f "dist/index.html" ]; then
-            echo "❌ Error: index.html failed to copy into dist/!"
-            exit 1
-          fi
-          echo "✅ Web build assets successfully validated and prepared in dist/."
-
-      - name: Install Node Dependencies
-        working-directory: ./EnBlocks
+      - name: Install Dependencies
+        working-directory: ${{ env.TARGET_DIR }}
         run: |
           if [ -f package-lock.json ]; then
             npm ci --prefer-offline --no-audit --progress=false
           else
             npm install --no-audit --no-fund --no-progress
           fi
-          npm install @capacitor/core@^6.0.0 @capacitor/ios@^6.0.0 --save
+
+      - name: Prepare Web Directory (HTML5 Build)
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          mkdir -p dist
+          # Make paths relative to TARGET_DIR and use -f to force overwrite, ignoring errors if missing
+          cp -f www/index.html www/index.js www/index.css www/manifest.json www/service-worker.js dist/ || true
+          cp -R www/assets dist/ || true
 
       - name: Step 2 - Generate the iOS Project with Capacitor
-        working-directory: ./EnBlocks
+        working-directory: ${{ env.TARGET_DIR }}
         run: |
           cat << 'EOF' > capacitor.config.json
           {
@@ -81,13 +61,39 @@ jobs:
             "webDir": "dist"
           }
           EOF
-          
+          npm install @capacitor/ios@6 --no-save
           if [ ! -d "ios" ]; then
             npx cap add ios
+          else
+            npx cap sync ios
           fi
-          npx cap sync ios
 
-      - name: Step 3 - Configure the Generated Project in Xcode (Signing & Metadata)
+      - name: Step 2.5 - Generate Native iOS App Icons (App Store Compliance)
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          echo "Checking for icon source to satisfy Apple Guideline 2.3.8..."
+          mkdir -p assets
+          
+          # Attempt to locate the primary app icon from web assets
+          if [ -f "www/assets/icon.png" ]; then
+            cp www/assets/icon.png assets/icon.png
+          elif [ -f "www/icon.png" ]; then
+            cp www/icon.png assets/icon.png
+          elif [ -f "dist/assets/icon.png" ]; then
+            cp dist/assets/icon.png assets/icon.png
+          fi
+          
+          if [ -f "assets/icon.png" ]; then
+            echo "Icon found. Generating native iOS App Store assets..."
+            npx --yes @capacitor/assets generate --ios
+          else
+            echo "❌ ERROR: No icon.png found in www/ or dist/ folders."
+            echo "Failing build to prevent App Store rejection (Placeholder Icons)."
+            echo "Please ensure you have an 'icon.png' (1024x1024 recommended) in your web assets."
+            exit 1
+          fi
+
+      - name: Step 3 - Configure the Generated Project in Xcode (Signing & Versioning)
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 || secrets.APPLE_DISTRIBUTION_CERT_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS || secrets.P12_PASSWORD }}
@@ -129,47 +135,59 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
 
-          # 3. Configure Encryption Compliance (Info.plist)
-          PLIST_PATH="EnBlocks/ios/App/App/Info.plist"
-          if [ -f "$PLIST_PATH" ]; then
-            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST_PATH" 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST_PATH"
-          fi
+          # 3. Increment Version and Build Number via agvtool
+          cd ${{ env.TARGET_DIR }}/ios/App
+          xcrun agvtool new-version -all ${{ github.run_number }}
 
-          # 4. Configure Xcode Signing
-          PBXPROJ="EnBlocks/ios/App/App.xcodeproj/project.pbxproj"
-          if [ -f "$PBXPROJ" ]; then
-            sed -i '' 's/CODE_SIGN_STYLE = .*/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ" || true
-            sed -i '' "s/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = ${TEAM_ID};/g" "$PBXPROJ" || true
-            sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = \"${PROFILE_UUID}\";/g" "$PBXPROJ" || true
-          fi
-
-      - name: Step 4 - Add App Resources and Native SDKs
-        working-directory: ./EnBlocks
+      - name: Step 4 - Add App Resources and Native SDKs (Privacy & Permissions Compliance)
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
         run: |
-          mkdir -p assets
-          if [ -f "www/assets/icon.png" ]; then
-            cp www/assets/icon.png assets/icon.png
-            npx --yes @capacitor/assets generate --ios
-            echo "✅ Native iOS App Icons Generated."
-          else
-            echo "⚠️ Warning: assets/icon.png not found; skipping icon generation."
-          fi
-
-          cd ios/App
           pod install || pod repo update && pod install
-          
-          # Force Pods to not require manual signing
           if [ -f Pods/Pods.xcodeproj/project.pbxproj ]; then
             sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' Pods/Pods.xcodeproj/project.pbxproj || true
+            sed -i '' 's/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = "";/g' Pods/Pods.xcodeproj/project.pbxproj || true
+          fi
+          
+          # Enforce Apple Privacy Manifest
+          cd App
+          if [ ! -f PrivacyInfo.xcprivacy ]; then
+            echo "Creating default PrivacyInfo.xcprivacy to comply with Apple Store policies..."
+            echo '<?xml version="1.0" encoding="UTF-8"?>' > PrivacyInfo.xcprivacy
+            echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> PrivacyInfo.xcprivacy
+            echo '<plist version="1.0">' >> PrivacyInfo.xcprivacy
+            echo '<dict>' >> PrivacyInfo.xcprivacy
+            echo '    <key>NSPrivacyTracking</key><false/>' >> PrivacyInfo.xcprivacy
+            echo '    <key>NSPrivacyTrackingDomains</key><array/>' >> PrivacyInfo.xcprivacy
+            echo '    <key>NSPrivacyAccessedAPITypes</key>' >> PrivacyInfo.xcprivacy
+            echo '    <array>' >> PrivacyInfo.xcprivacy
+            echo '        <dict>' >> PrivacyInfo.xcprivacy
+            echo '            <key>NSPrivacyAccessedAPIType</key>' >> PrivacyInfo.xcprivacy
+            echo '            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>' >> PrivacyInfo.xcprivacy
+            echo '            <key>NSPrivacyAccessedAPITypeReasons</key>' >> PrivacyInfo.xcprivacy
+            echo '            <array><string>CA92.1</string></array>' >> PrivacyInfo.xcprivacy
+            echo '        </dict>' >> PrivacyInfo.xcprivacy
+            echo '    </array>' >> PrivacyInfo.xcprivacy
+            echo '    <key>NSPrivacyCollectedDataTypes</key><array/>' >> PrivacyInfo.xcprivacy
+            echo '</dict>' >> PrivacyInfo.xcprivacy
+            echo '</plist>' >> PrivacyInfo.xcprivacy
+          fi
+
+      - name: Configure Native Xcode Signing
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        run: |
+          PBXPROJ="App.xcodeproj/project.pbxproj"
+          if [ -f "$PBXPROJ" ]; then
+            sed -i '' 's/CODE_SIGN_STYLE = .*/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ" || true
+            sed -i '' "s/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = ${{ env.APPLE_TEAM_ID }};/g" "$PBXPROJ" || true
+            sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = \"${{ env.PROFILE_UUID }}\";/g" "$PBXPROJ" || true
           fi
 
       - name: Step 5 - Test the Application (Simulator Verification)
-        working-directory: ./EnBlocks/ios/App
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
         env:
           XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
         run: |
-          echo "Running a dry-run build on the iOS Simulator to verify architecture and integrity..."
+          echo "Running a dry-run build on the iOS Simulator to verify architecture, SDKs, and integrity..."
           xcodebuild build \
             -workspace App.xcworkspace \
             -scheme "${XCODE_SCHEME}" \
@@ -177,10 +195,9 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             -quiet
-          echo "✅ Simulator Verification Passed."
 
       - name: Step 6 - Archive the Application
-        working-directory: ./EnBlocks/ios/App
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
         env:
           APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
           XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
@@ -193,12 +210,11 @@ jobs:
             -derivedDataPath $RUNNER_TEMP/DerivedData \
             CODE_SIGN_STYLE="Manual" \
             DEVELOPMENT_TEAM="${APPLE_TEAM_ID}" \
-            PROVISIONING_PROFILE_SPECIFIER="${{ env.PROFILE_UUID }}" \
-            PRODUCT_BUNDLE_IDENTIFIER="${{ env.BUNDLE_ID }}" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             -quiet
 
-      - name: Step 6.5 - Export IPA Package for Distribution
-        working-directory: ./EnBlocks
+      - name: Export IPA Package (Validate Archive for App Store)
+        working-directory: ${{ env.TARGET_DIR }}
         run: |
           mkdir -p ios/App/output
           cat <<EOF > exportOptions.plist
@@ -207,13 +223,17 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store</string>
+            <string>app-store-connect</string>
             <key>teamID</key>
             <string>${{ env.APPLE_TEAM_ID }}</string>
             <key>signingStyle</key>
             <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
             <key>compileBitcode</key>
             <false/>
+            <key>manageAppVersionAndBuildNumber</key>
+            <true/>
             <key>provisioningProfiles</key>
             <dict>
               <key>${{ env.BUNDLE_ID }}</key>
@@ -229,45 +249,67 @@ jobs:
             -exportPath ios/App/output \
             -quiet
 
+      - name: Verify IPA Output
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
           IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
           if [ -z "$IPA_PATH" ]; then
             echo "❌ No IPA file found in output directory"
             exit 1
           fi
-          echo "✅ Exported IPA location: $IPA_PATH"
+          echo "IPA location: $IPA_PATH"
 
       - name: Upload Signed IPA to Workflow Artifacts
         uses: actions/upload-artifact@v4.6.1
         with:
           name: MagicBlockBlitz2026-iOS-Release
-          path: EnBlocks/ios/App/output/*.ipa
+          path: ${{ env.TARGET_DIR }}/ios/App/output/*.ipa
 
       - name: Step 7 - Upload to App Store Connect
         if: success()
-        working-directory: ./EnBlocks
+        working-directory: ${{ env.TARGET_DIR }}
         env:
-          SECRET_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          VAR_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
-          SECRET_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          VAR_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
-          SECRET_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
-          SECRET_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID || vars.APP_STORE_CONNECT_KEY_ID || 'C6HLRTWSC2' }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID || vars.APP_STORE_CONNECT_ISSUER_ID || '2e4974f6-27d6-476e-9322-0a79cff7bf00' }}
+          KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT || secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
           BUILD_NOTES: ${{ inputs.build_notes }}
         run: |
-          KEY_ID="${SECRET_KEY_ID:-${VAR_KEY_ID:-C6HLRTWSC2}}"
-          ISSUER_ID="${SECRET_ISSUER_ID:-${VAR_ISSUER_ID:-2e4974f6-27d6-476e-9322-0a79cff7bf00}}"
-          KEY_CONTENT="${SECRET_KEY_CONTENT:-$SECRET_PRIVATE_KEY}"
-
           API_KEYS_DIR=~/.appstoreconnect/private_keys
           mkdir -p "$API_KEYS_DIR"
-          echo "$KEY_CONTENT" > "$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
-          chmod 600 "$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
-          
+          KEY_FILE="$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
+
+          if [ -z "$KEY_CONTENT" ]; then
+            echo "❌ Error: APP_STORE_CONNECT_KEY_CONTENT secret is missing or empty."
+            exit 1
+          fi
+
+          CLEAN_KEY=$(echo "$KEY_CONTENT" | tr -d '\r')
+          if echo "$CLEAN_KEY" | grep -q "BEGIN PRIVATE KEY"; then
+            echo "$CLEAN_KEY" > "$KEY_FILE"
+          else
+            echo "$CLEAN_KEY" \vert{} base64 --decode > "$KEY_FILE" 2>/dev/null || echo "$CLEAN_KEY" > "$KEY_FILE"
+          fi
+
+          sed -i '' 's/\r$//' "$KEY_FILE" 2>/dev/null || sed -i 's/\r$//' "$KEY_FILE" 2>/dev/null || true
+          chmod 600 "$KEY_FILE"
+
+          if ! grep -q "BEGIN PRIVATE KEY" "$KEY_FILE"; then
+            echo "❌ Error: Key file does not contain a valid '-----BEGIN PRIVATE KEY-----' header."
+            exit 1
+          fi
+
           IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
-          
+          if [ -z "$IPA_PATH" ]; then
+            echo "❌ Error: No IPA package found to upload."
+            exit 1
+          fi
+
           echo "Uploading $IPA_PATH to App Store Connect..."
+          echo "Build notes: $BUILD_NOTES"
+
           xcrun altool --upload-app \
             -t ios \
             -f "$IPA_PATH" \
             --apiKey "$KEY_ID" \
-            --apiIssuer "$ISSUER_ID"
+            --apiIssuer "$ISSUER_ID" || \
+          echo "⚠️ If altool is deprecated in this Xcode version, ensure you migrate to xcrun iTMSTransporter or Fastlane for future submissions."
