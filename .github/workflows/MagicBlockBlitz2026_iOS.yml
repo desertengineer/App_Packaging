@@ -163,7 +163,8 @@ jobs:
           if [ -z "$BUNDLE_ID" ] || [ "$BUNDLE_ID" = "*" ]; then
             BUNDLE_ID="$FALLBACK_BUNDLE_ID"
           fi
-
+          echo "Bundle ID: ${BUNDLE_ID}"
+          echo "Profile UUID: ${PROFILE_UUID}"
           echo "APPLE_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
           echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
