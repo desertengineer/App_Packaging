@@ -31,7 +31,7 @@ jobs:
 
       - name: Setup Node.js
         uses: actions/setup-node@v4.2.0
-        with:
+        with: 
           node-version: 22
 
       - name: Install Dependencies
@@ -102,38 +102,75 @@ jobs:
           FALLBACK_BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
           FALLBACK_TEAM_ID: ${{ vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID || 'XHNXQ72KYZ' }}
         run: |
+          set -euo pipefail
+
+          if [ -z "${BUILD_CERTIFICATE_BASE64:-}" ]; then
+            echo "::error::Missing required secret: APPLE_CERTIFICATE_P12 or APPLE_DISTRIBUTION_CERT_P12_BASE64"
+            exit 1
+          fi
+
+          if [ -z "${P12_PASSWORD:-}" ]; then
+            echo "::error::Missing required secret: APPLE_CERTIFICATE_PASS or P12_PASSWORD"
+            exit 1
+          fi
+
+          if [ -z "${BUILD_PROVISION_PROFILE_BASE64:-}" ]; then
+            echo "::error::Missing required secret: BASE64_PROVISIONING_PROFILE or APPLE_PROVISION_PROFILE or PROVISIONING_PROFILE_BASE64"
+            exit 1
+          fi
+
           # 1. Setup Keychain and Certificate
-          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          echo -n "$BUILD_CERTIFICATE_BASE64" \vert{} base64 --decode -o $CERTIFICATE_PATH
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security list-keychains -d user -s $KEYCHAIN_PATH
+          CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          echo "Decoding signing certificate to $CERTIFICATE_PATH"
+          printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERTIFICATE_PATH"
+          if [ ! -s "$CERTIFICATE_PATH" ]; then
+            echo "::error::Certificate decode produced an empty file. Check APPLE_CERTIFICATE_P12 / APPLE_DISTRIBUTION_CERT_P12_BASE64." 
+            exit 1
+          fi
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
 
           # 2. Setup Provisioning Profile
-          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
-          PLIST_PATH=$RUNNER_TEMP/profile.plist
-          echo -n "$BUILD_PROVISION_PROFILE_BASE64" \vert{} base64 --decode -o $PP_PATH
-          security cms -D -i "$PP_PATH" > $PLIST_PATH
-          
-          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $PLIST_PATH)
-          TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" $PLIST_PATH \vert{}\vert{} echo "$FALLBACK_TEAM_ID")
-          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" $PLIST_PATH)
-          RAW_APP_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" $PLIST_PATH)
+          PP_PATH="$RUNNER_TEMP/build_pp.mobileprovision"
+          PLIST_PATH="$RUNNER_TEMP/profile.plist"
+
+          echo "Decoding provisioning profile to $PP_PATH"
+          printf '%s' "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o "$PP_PATH"
+          if [ ! -s "$PP_PATH" ]; then
+            echo "::error::Provisioning profile decode produced an empty file. Check BASE64_PROVISIONING_PROFILE / APPLE_PROVISION_PROFILE / PROVISIONING_PROFILE_BASE64."
+            exit 1
+          fi
+
+          security cms -D -i "$PP_PATH" > "$PLIST_PATH"
+
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$PLIST_PATH" 2>/dev/null || true)
+          TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$PLIST_PATH" 2>/dev/null || echo "$FALLBACK_TEAM_ID")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" "$PLIST_PATH" 2>/dev/null || true)
+          RAW_APP_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" "$PLIST_PATH" 2>/dev/null || true)
+
+          if [ -z "$PROFILE_UUID" ] || [ -z "$TEAM_ID" ]; then
+            echo "::error::Provisioning profile is invalid or unreadable. Ensure the correct provisioning profile secret is configured and matches the app's bundle ID/team."
+            exit 1
+          fi
+
           BUNDLE_ID=$(echo "$RAW_APP_ID" | sed 's/^[^.]*\.//')
-          if [ -z "$BUNDLE_ID" ] \vert{}\vert{} [ "$BUNDLE_ID" = "*" ]; then
+          if [ -z "$BUNDLE_ID" ] || [ "$BUNDLE_ID" = "*" ]; then
             BUNDLE_ID="$FALLBACK_BUNDLE_ID"
           fi
-          
-          echo "APPLE_TEAM_ID=$TEAM_ID" >> $GITHUB_ENV
-          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
-          echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
-          echo "BUNDLE_ID=$BUNDLE_ID" >> $GITHUB_ENV
-          
+
+          echo "APPLE_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
+
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
+          cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
 
           # 3. Increment Version and Build Number via agvtool
           cd ${{ env.TARGET_DIR }}/ios/App
@@ -274,33 +311,45 @@ jobs:
           KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT || secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
           BUILD_NOTES: ${{ inputs.build_notes }}
         run: |
+          set -euo pipefail
+
+          if [ -z "${KEY_ID:-}" ]; then
+            echo "::error::Missing required App Store Connect secret/variable: APP_STORE_CONNECT_KEY_ID"
+            exit 1
+          fi
+
+          if [ -z "${ISSUER_ID:-}" ]; then
+            echo "::error::Missing required App Store Connect secret/variable: APP_STORE_CONNECT_ISSUER_ID"
+            exit 1
+          fi
+
+          if [ -z "${KEY_CONTENT:-}" ]; then
+            echo "::error::Missing required App Store Connect secret: APP_STORE_CONNECT_KEY_CONTENT or APP_STORE_CONNECT_PRIVATE_KEY"
+            exit 1
+          fi
+
           API_KEYS_DIR=~/.appstoreconnect/private_keys
           mkdir -p "$API_KEYS_DIR"
           KEY_FILE="$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
-
-          if [ -z "$KEY_CONTENT" ]; then
-            echo "❌ Error: APP_STORE_CONNECT_KEY_CONTENT secret is missing or empty."
-            exit 1
-          fi
 
           CLEAN_KEY=$(echo "$KEY_CONTENT" | tr -d '\r')
           if echo "$CLEAN_KEY" | grep -q "BEGIN PRIVATE KEY"; then
             echo "$CLEAN_KEY" > "$KEY_FILE"
           else
-            echo "$CLEAN_KEY" \vert{} base64 --decode > "$KEY_FILE" 2>/dev/null || echo "$CLEAN_KEY" > "$KEY_FILE"
+            echo "$CLEAN_KEY" | base64 --decode > "$KEY_FILE" 2>/dev/null || echo "$CLEAN_KEY" > "$KEY_FILE"
           fi
 
           sed -i '' 's/\r$//' "$KEY_FILE" 2>/dev/null || sed -i 's/\r$//' "$KEY_FILE" 2>/dev/null || true
           chmod 600 "$KEY_FILE"
 
           if ! grep -q "BEGIN PRIVATE KEY" "$KEY_FILE"; then
-            echo "❌ Error: Key file does not contain a valid '-----BEGIN PRIVATE KEY-----' header."
+            echo "::error::App Store Connect key file does not contain a valid '-----BEGIN PRIVATE KEY-----' header. Check APP_STORE_CONNECT_KEY_CONTENT / APP_STORE_CONNECT_PRIVATE_KEY."
             exit 1
           fi
 
           IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
           if [ -z "$IPA_PATH" ]; then
-            echo "❌ Error: No IPA package found to upload."
+            echo "::error::No IPA package found to upload. Ensure the export/archive step succeeded."
             exit 1
           fi
 
