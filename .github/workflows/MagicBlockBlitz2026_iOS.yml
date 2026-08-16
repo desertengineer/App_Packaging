@@ -188,11 +188,9 @@ jobs:
         run: |
           pod install || pod repo update && pod install
           if [ -f Pods/Pods.xcodeproj/project.pbxproj ]; then
-            sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' Pods/Pods.xcodeproj/project.pbxproj || true
-            sed -i '' 's/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = "";/g' Pods/Pods.xcodeproj/project.pbxproj || true
-            sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = "";/g' Pods/Pods.xcodeproj/project.pbxproj || true
-            sed -i '' 's/PROVISIONING_PROFILE = .*/PROVISIONING_PROFILE = "";/g' Pods/Pods.xcodeproj/project.pbxproj || true
-            sed -i '' 's/CODE_SIGN_STYLE = .*/CODE_SIGN_STYLE = Manual;/g' Pods/Pods.xcodeproj/project.pbxproj || true
+            echo "Clearing provisioning settings from CocoaPods targets before archive..."
+            perl -0pi -e 's/PROVISIONING_PROFILE_SPECIFIER = .*?;/PROVISIONING_PROFILE_SPECIFIER = "";/g; s/PROVISIONING_PROFILE = .*?;/PROVISIONING_PROFILE = "";/g; s/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g; s/DEVELOPMENT_TEAM = .*?;/DEVELOPMENT_TEAM = "";/g; s/CODE_SIGN_STYLE = .*?;/CODE_SIGN_STYLE = Automatic;/g' Pods/Pods.xcodeproj/project.pbxproj || true
+            grep -n "PROVISIONING_PROFILE\|CODE_SIGNING_ALLOWED\|DEVELOPMENT_TEAM" Pods/Pods.xcodeproj/project.pbxproj | head -n 20 || true
           fi
           
           # Enforce Apple Privacy Manifest
