@@ -186,7 +186,12 @@ jobs:
       - name: Step 4 - Add App Resources and Native SDKs (Privacy & Permissions Compliance)
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         run: |
-          pod install || pod repo update && pod install
+          if ! pod install; then
+            echo "pod install failed; refreshing CocoaPods repo and retrying..."
+            pod repo update
+            pod install
+          fi
+
           if [ -f Pods/Pods.xcodeproj/project.pbxproj ]; then
             echo "Clearing provisioning settings from CocoaPods targets before archive..."
             python3 - <<'PY'
