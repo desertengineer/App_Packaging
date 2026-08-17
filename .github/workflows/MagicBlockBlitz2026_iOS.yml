@@ -512,7 +512,7 @@ jobs:
           fi
 
 
-      # ============================================================
+     # ============================================================
       # 15. CONFIGURE SIGNING ONLY FOR THE APP PROJECT
       # ============================================================
 
@@ -548,39 +548,31 @@ jobs:
           with open(path, "r", encoding="utf-8") as f:
               data = f.read()
 
-          # Replace existing signing settings.
+          # 1. Update existing keys anywhere in the file
           data = re.sub(r'CODE_SIGN_STYLE = [^;]*;', 'CODE_SIGN_STYLE = Manual;', data)
           data = re.sub(r'DEVELOPMENT_TEAM = [^;]*;', f'DEVELOPMENT_TEAM = {team};', data)
           data = re.sub(r'CODE_SIGN_IDENTITY = [^;]*;', 'CODE_SIGN_IDENTITY = "Apple Distribution";', data)
           data = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;', f'PROVISIONING_PROFILE_SPECIFIER = "{profile_name}";', data)
           data = re.sub(r'PROVISIONING_PROFILE = [^;]*;', f'PROVISIONING_PROFILE = "{profile_uuid}";', data)
 
-          # Add missing signing settings to XCBuildConfiguration
-          def configure_block(match):
+          # 2. Add missing keys safely into ALL buildSettings blocks
+          def inject_settings(match):
               block = match.group(0)
-
-              if 'buildSettings = {' not in block:
-                  return block
-
-              if 'CODE_SIGN_STYLE =' not in block:
+              
+              if 'CODE_SIGN_STYLE' not in block:
                   block = block.replace('buildSettings = {', 'buildSettings = {\n\t\t\t\tCODE_SIGN_STYLE = Manual;')
-              if 'DEVELOPMENT_TEAM =' not in block:
+              if 'DEVELOPMENT_TEAM' not in block:
                   block = block.replace('buildSettings = {', f'buildSettings = {{\n\t\t\t\tDEVELOPMENT_TEAM = {team};')
-              if 'CODE_SIGN_IDENTITY =' not in block:
+              if 'CODE_SIGN_IDENTITY' not in block:
                   block = block.replace('buildSettings = {', 'buildSettings = {\n\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";')
-              if 'PROVISIONING_PROFILE_SPECIFIER =' not in block:
+              if 'PROVISIONING_PROFILE_SPECIFIER' not in block:
                   block = block.replace('buildSettings = {', f'buildSettings = {{\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile_name}";')
-              if 'PROVISIONING_PROFILE =' not in block:
+              if 'PROVISIONING_PROFILE =' not in block and 'PROVISIONING_PROFILE=' not in block:
                   block = block.replace('buildSettings = {', f'buildSettings = {{\n\t\t\t\tPROVISIONING_PROFILE = "{profile_uuid}";')
 
               return block
 
-          data = re.sub(
-              r'XCBuildConfiguration\s+[^=]+=\s*\{.*?^\s*\};',
-              configure_block,
-              data,
-              flags=re.MULTILINE | re.DOTALL
-          )
+          data = re.sub(r'buildSettings\s*=\s*\{[\s\S]*?\};', inject_settings, data)
 
           with open(path, "w", encoding="utf-8") as f:
               f.write(data)
