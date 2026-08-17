@@ -194,23 +194,7 @@ jobs:
 
           if [ -f Pods/Pods.xcodeproj/project.pbxproj ]; then
             echo "Clearing provisioning settings from CocoaPods targets before archive..."
-            python3 - <<'PY'
-            from pathlib import Path
-            import re
-            p = Path('Pods/Pods.xcodeproj/project.pbxproj')
-            text = p.read_text()
-            replacements = [
-                (r'PROVISIONING_PROFILE_SPECIFIER = .*?;', 'PROVISIONING_PROFILE_SPECIFIER = "";'),
-                (r'PROVISIONING_PROFILE = .*?;', 'PROVISIONING_PROFILE = "";'),
-                (r'CODE_SIGNING_ALLOWED = YES;', 'CODE_SIGNING_ALLOWED = NO;'),
-                (r'CODE_SIGNING_ALLOWED = YES\s*;', 'CODE_SIGNING_ALLOWED = NO;'),
-                (r'DEVELOPMENT_TEAM = .*?;', 'DEVELOPMENT_TEAM = "";'),
-                (r'CODE_SIGN_STYLE = .*?;', 'CODE_SIGN_STYLE = Automatic;'),
-            ]
-            for pattern, replacement in replacements:
-                text = re.sub(pattern, replacement, text)
-            p.write_text(text)
-            PY
+            python3 -c 'from pathlib import Path; import re; p = Path("Pods/Pods.xcodeproj/project.pbxproj"); text = p.read_text(); text = re.sub(r"PROVISIONING_PROFILE_SPECIFIER = .*?;", "PROVISIONING_PROFILE_SPECIFIER = \"\";", text); text = re.sub(r"PROVISIONING_PROFILE = .*?;", "PROVISIONING_PROFILE = \"\";", text); text = re.sub(r"CODE_SIGNING_ALLOWED = YES;", "CODE_SIGNING_ALLOWED = NO;", text); text = re.sub(r"DEVELOPMENT_TEAM = .*?;", "DEVELOPMENT_TEAM = \"\";", text); text = re.sub(r"CODE_SIGN_STYLE = .*?;", "CODE_SIGN_STYLE = Automatic;", text); p.write_text(text)'
             echo "Pods signing cleanup complete."
             grep -n "PROVISIONING_PROFILE\|PROVISIONING_PROFILE_SPECIFIER\|CODE_SIGNING_ALLOWED\|DEVELOPMENT_TEAM\|CODE_SIGN_STYLE" Pods/Pods.xcodeproj/project.pbxproj | head -n 40 || true
           fi
@@ -302,31 +286,7 @@ jobs:
         working-directory: ${{ env.TARGET_DIR }}
         run: |
           mkdir -p ios/App/output
-          cat <<EOF > exportOptions.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store-connect</string>
-            <key>teamID</key>
-            <string>${{ env.APPLE_TEAM_ID }}</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>signingCertificate</key>
-            <string>Apple Distribution</string>
-            <key>compileBitcode</key>
-            <false/>
-            <key>manageAppVersionAndBuildNumber</key>
-            <true/>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>${{ env.BUNDLE_ID }}</key>
-              <string>${{ env.PROFILE_UUID }}</string>
-            </dict>
-          </dict>
-          </plist>
-          EOF
+          python3 -c 'from pathlib import Path; Path("ios/App/exportOptions.plist").write_text("""<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>method</key>\n  <string>app-store-connect</string>\n  <key>teamID</key>\n  <string>${{ env.APPLE_TEAM_ID }}</string>\n  <key>signingStyle</key>\n  <string>manual</string>\n  <key>signingCertificate</key>\n  <string>Apple Distribution</string>\n  <key>compileBitcode</key>\n  <false/>\n  <key>manageAppVersionAndBuildNumber</key>\n  <true/>\n  <key>provisioningProfiles</key>\n  <dict>\n    <key>${{ env.BUNDLE_ID }}</key>\n    <string>${{ env.PROFILE_UUID }}</string>\n  </dict>\n</dict>\n</plist>\n""")'
           
           xcodebuild -exportArchive \
             -archivePath $RUNNER_TEMP/App.xcarchive \
