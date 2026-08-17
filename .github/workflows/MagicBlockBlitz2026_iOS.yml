@@ -30,8 +30,6 @@ jobs:
             TARGET_DIR="$RAW_DIR"
           elif [ -d "EnBlocks" ]; then
             TARGET_DIR="EnBlocks"
-          elif [ -d "EnBlocks" ]; then
-            TARGET_DIR="EnBlocks"
           else
             TARGET_DIR="."
           fi
@@ -71,13 +69,31 @@ jobs:
           }
           EOF
 
-      - name: Sync iOS Native Platform
+      - name: Install & Sync iOS Native Platform
         working-directory: ${{ env.TARGET_DIR }}
         run: |
+          npm install @capacitor/ios@6 --no-save
           if [ ! -d "ios" ]; then
             npx --yes --package @capacitor/cli@6 cap add ios
           else
             npx --yes --package @capacitor/cli@6 cap sync ios
+          fi
+
+      - name: Generate Native iOS App Icons (App Store Compliance)
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          mkdir -p assets
+          if [ -f "www/assets/icon.png" ]; then
+            cp www/assets/icon.png assets/icon.png
+          elif [ -f "www/icon.png" ]; then
+            cp www/icon.png assets/icon.png
+          fi
+
+          if [ -f "assets/icon.png" ]; then
+            echo "Generating native iOS App Store assets..."
+            npx --yes @capacitor/assets generate --ios
+          else
+            echo "⚠️ Warning: assets/icon.png not found; skipping icon generation."
           fi
 
       - name: Import Apple Certificate to Keychain
@@ -88,7 +104,7 @@ jobs:
         run: |
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$BUILD_CERTIFICATE_BASE64" \vert{} base64 --decode -o $CERTIFICATE_PATH
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
@@ -103,15 +119,15 @@ jobs:
         run: |
           PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
           PLIST_PATH=$RUNNER_TEMP/profile.plist
-          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" \vert{} base64 --decode -o $PP_PATH
           security cms -D -i "$PP_PATH" > $PLIST_PATH
 
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $PLIST_PATH)
-          TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" $PLIST_PATH || echo "$FALLBACK_TEAM_ID")
+          TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" $PLIST_PATH \vert{}\vert{} echo "$FALLBACK_TEAM_ID")
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" $PLIST_PATH)
           RAW_APP_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" $PLIST_PATH)
           BUNDLE_ID=$(echo "$RAW_APP_ID" | sed 's/^[^.]*\.//')
-          if [ -z "$BUNDLE_ID" ] || [ "$BUNDLE_ID" = "*" ]; then
+          if [ -z "$BUNDLE_ID" ] \vert{}\vert{} [ "$BUNDLE_ID" = "*" ]; then
             BUNDLE_ID="$FALLBACK_BUNDLE_ID"
           fi
 
@@ -122,15 +138,40 @@ jobs:
 
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
-          echo "Provisioning Profile Installed: $PROFILE_NAME ($PROFILE_UUID) for Bundle: $BUNDLE_ID (Team: $TEAM_ID)"
+          echo "Provisioning Profile Installed: $PROFILE_NAME ($PROFILE_UUID) for Bundle: $BUNDLE_ID (Team:$TEAM_ID)"
 
-      - name: Install CocoaPods Dependencies & Strip Pod Signing
+      - name: Install CocoaPods Dependencies & Inject App Store Compliance
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         run: |
           pod install || pod repo update && pod install
           if [ -f Pods/Pods.xcodeproj/project.pbxproj ]; then
             sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' Pods/Pods.xcodeproj/project.pbxproj || true
             sed -i '' 's/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = "";/g' Pods/Pods.xcodeproj/project.pbxproj || true
+          fi
+
+          # Ensure Privacy Manifest exists to satisfy Apple Privacy Disclosures
+          if [ ! -f App/PrivacyInfo.xcprivacy ]; then
+            echo "Creating default PrivacyInfo.xcprivacy for App Store compliance..."
+            cat << 'PLISTEOF' > App/PrivacyInfo.xcprivacy
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>NSPrivacyTracking</key><false/>
+              <key>NSPrivacyTrackingDomains</key><array/>
+              <key>NSPrivacyAccessedAPITypes</key>
+              <array>
+                  <dict>
+                      <key>NSPrivacyAccessedAPIType</key>
+                      <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+                      <key>NSPrivacyAccessedAPITypeReasons</key>
+                      <array><string>CA92.1</string></array>
+                  </dict>
+              </array>
+              <key>NSPrivacyCollectedDataTypes</key><array/>
+          </dict>
+          </plist>
+          PLISTEOF
           fi
 
       - name: Configure Native Xcode Signing
@@ -227,19 +268,16 @@ jobs:
             exit 1
           fi
 
-          # Smart decode: Handles raw PEM text, Base64 strings, or multi-line GitHub secrets
           CLEAN_KEY=$(echo "$KEY_CONTENT" | tr -d '\r')
           if echo "$CLEAN_KEY" | grep -q "BEGIN PRIVATE KEY"; then
             echo "$CLEAN_KEY" > "$KEY_FILE"
           else
-            echo "$CLEAN_KEY" | base64 --decode > "$KEY_FILE" 2>/dev/null || echo "$CLEAN_KEY" > "$KEY_FILE"
+            echo "$CLEAN_KEY" \vert{} base64 --decode > "$KEY_FILE" 2>/dev/null || echo "$CLEAN_KEY" > "$KEY_FILE"
           fi
 
-          # Ensure strict Unix line endings (\n) and permissions required by Apple altool
           sed -i '' 's/\r$//' "$KEY_FILE" 2>/dev/null || sed -i 's/\r$//' "$KEY_FILE" 2>/dev/null || true
           chmod 600 "$KEY_FILE"
 
-          # Verify header structure
           if ! grep -q "BEGIN PRIVATE KEY" "$KEY_FILE"; then
             echo "❌ Error: Key file does not contain a valid '-----BEGIN PRIVATE KEY-----' header."
             echo "Please check GitHub Secret 'APP_STORE_CONNECT_KEY_CONTENT'."
