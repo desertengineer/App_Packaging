@@ -194,30 +194,7 @@ jobs:
 
           if [ -f Pods/Pods.xcodeproj/project.pbxproj ]; then
             echo "Resetting CocoaPods target signing to automatic/disabled before archive..."
-            python3 - "$PWD" <<'PY'
-            from pathlib import Path
-            import re
-            import sys
-            root = Path(sys.argv[1])
-            p = root / 'Pods/Pods.xcodeproj/project.pbxproj'
-            text = p.read_text()
-            for field in (
-                'PROVISIONING_PROFILE_SPECIFIER',
-                'PROVISIONING_PROFILE',
-                'DEVELOPMENT_TEAM',
-                'CODE_SIGN_STYLE',
-                'CODE_SIGNING_REQUIRED',
-                'CODE_SIGNING_ALLOWED',
-            ):
-                text = re.sub(rf'^\s*{field} = .*?;\n', '', text, flags=re.M)
-            text = re.sub(r'CODE_SIGNING_ALLOWED = YES;', 'CODE_SIGNING_ALLOWED = NO;', text)
-            text = re.sub(r'CODE_SIGNING_REQUIRED = YES;', 'CODE_SIGNING_REQUIRED = NO;', text)
-            text = re.sub(r'CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Automatic;', text)
-            text = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = ".*?";', 'PROVISIONING_PROFILE_SPECIFIER = "";', text)
-            text = re.sub(r'PROVISIONING_PROFILE = ".*?";', 'PROVISIONING_PROFILE = "";', text)
-            text = re.sub(r'DEVELOPMENT_TEAM = ".*?";', 'DEVELOPMENT_TEAM = "";', text)
-            p.write_text(text)
-            PY
+            python3 -c 'from pathlib import Path; import re; p = Path("Pods/Pods.xcodeproj/project.pbxproj"); text = p.read_text(); text = re.sub(r"^\s*PROVISIONING_PROFILE_SPECIFIER = .*?;\n", "", text, flags=re.M); text = re.sub(r"^\s*PROVISIONING_PROFILE = .*?;\n", "", text, flags=re.M); text = re.sub(r"^\s*DEVELOPMENT_TEAM = .*?;\n", "", text, flags=re.M); text = re.sub(r"^\s*CODE_SIGN_STYLE = .*?;\n", "", text, flags=re.M); text = re.sub(r"^\s*CODE_SIGNING_REQUIRED = .*?;\n", "", text, flags=re.M); text = re.sub(r"^\s*CODE_SIGNING_ALLOWED = .*?;\n", "", text, flags=re.M); text = re.sub(r"CODE_SIGNING_ALLOWED = YES;", "CODE_SIGNING_ALLOWED = NO;", text); text = re.sub(r"CODE_SIGNING_REQUIRED = YES;", "CODE_SIGNING_REQUIRED = NO;", text); text = re.sub(r"CODE_SIGN_STYLE = Manual;", "CODE_SIGN_STYLE = Automatic;", text); text = re.sub(r"PROVISIONING_PROFILE_SPECIFIER = \".*?\";", "PROVISIONING_PROFILE_SPECIFIER = \"\";", text); text = re.sub(r"PROVISIONING_PROFILE = \".*?\";", "PROVISIONING_PROFILE = \"\";", text); text = re.sub(r"DEVELOPMENT_TEAM = \".*?\";", "DEVELOPMENT_TEAM = \"\";", text); p.write_text(text)'
             echo "Pods signing cleanup complete."
             grep -nE 'PROVISIONING_PROFILE|PROVISIONING_PROFILE_SPECIFIER|CODE_SIGNING_ALLOWED = YES|CODE_SIGN_STYLE = Manual|DEVELOPMENT_TEAM = ' Pods/Pods.xcodeproj/project.pbxproj | head -n 60 || true
           fi
