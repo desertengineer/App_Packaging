@@ -514,10 +514,6 @@ jobs:
 
       # ============================================================
       # 15. CONFIGURE SIGNING ONLY FOR THE APP PROJECT
-      #
-      # IMPORTANT:
-      # This modifies App.xcodeproj only.
-      # Pods.xcodeproj remains without a provisioning profile.
       # ============================================================
 
       - name: Configure App Target Signing
@@ -526,6 +522,7 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
           PROFILE_UUID: ${{ env.PROFILE_UUID }}
+          PROFILE_NAME: ${{ env.PROFILE_NAME }}
         run: |
           set -e
 
@@ -539,49 +536,26 @@ jobs:
 
           echo "Configuring signing in App.xcodeproj..."
 
-          python3 - "$PBXPROJ" "$APPLE_TEAM_ID" "$PROFILE_UUID" <<'PY'
+          python3 - "$PBXPROJ" "$APPLE_TEAM_ID" "$PROFILE_UUID" "$PROFILE_NAME" <<'PY'
           import sys
           import re
 
           path = sys.argv[1]
           team = sys.argv[2]
-          profile = sys.argv[3]
+          profile_uuid = sys.argv[3]
+          profile_name = sys.argv[4]
 
           with open(path, "r", encoding="utf-8") as f:
               data = f.read()
 
-          # App.xcodeproj contains the actual application target.
-          # CocoaPods uses a separate Pods.xcodeproj and is therefore
-          # not modified here.
-
           # Replace existing signing settings.
-          data = re.sub(
-              r'CODE_SIGN_STYLE = [^;]*;',
-              'CODE_SIGN_STYLE = Manual;',
-              data
-          )
-
-          data = re.sub(
-              r'DEVELOPMENT_TEAM = [^;]*;',
-              f'DEVELOPMENT_TEAM = {team};',
-              data
-          )
-
-          data = re.sub(
-              r'CODE_SIGN_IDENTITY = [^;]*;',
-              'CODE_SIGN_IDENTITY = "Apple Distribution";',
-              data
-          )
-
-          data = re.sub(
-              r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;',
-              f'PROVISIONING_PROFILE_SPECIFIER = "{profile}";',
-              data
-          )
+          data = re.sub(r'CODE_SIGN_STYLE = [^;]*;', 'CODE_SIGN_STYLE = Manual;', data)
+          data = re.sub(r'DEVELOPMENT_TEAM = [^;]*;', f'DEVELOPMENT_TEAM = {team};', data)
+          data = re.sub(r'CODE_SIGN_IDENTITY = [^;]*;', 'CODE_SIGN_IDENTITY = "Apple Distribution";', data)
+          data = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;', f'PROVISIONING_PROFILE_SPECIFIER = "{profile_name}";', data)
+          data = re.sub(r'PROVISIONING_PROFILE = [^;]*;', f'PROVISIONING_PROFILE = "{profile_uuid}";', data)
 
           # Add missing signing settings to XCBuildConfiguration
-          # blocks if they do not already exist.
-
           def configure_block(match):
               block = match.group(0)
 
@@ -589,32 +563,15 @@ jobs:
                   return block
 
               if 'CODE_SIGN_STYLE =' not in block:
-                  block = block.replace(
-                      'buildSettings = {',
-                      'buildSettings = {\n'
-                      '\t\t\t\tCODE_SIGN_STYLE = Manual;'
-                  )
-
+                  block = block.replace('buildSettings = {', 'buildSettings = {\n\t\t\t\tCODE_SIGN_STYLE = Manual;')
               if 'DEVELOPMENT_TEAM =' not in block:
-                  block = block.replace(
-                      'buildSettings = {',
-                      'buildSettings = {\n'
-                      f'\t\t\t\tDEVELOPMENT_TEAM = {team};'
-                  )
-
+                  block = block.replace('buildSettings = {', f'buildSettings = {{\n\t\t\t\tDEVELOPMENT_TEAM = {team};')
               if 'CODE_SIGN_IDENTITY =' not in block:
-                  block = block.replace(
-                      'buildSettings = {',
-                      'buildSettings = {\n'
-                      '\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";'
-                  )
-
+                  block = block.replace('buildSettings = {', 'buildSettings = {\n\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";')
               if 'PROVISIONING_PROFILE_SPECIFIER =' not in block:
-                  block = block.replace(
-                      'buildSettings = {',
-                      'buildSettings = {\n'
-                      f'\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile}";'
-                  )
+                  block = block.replace('buildSettings = {', f'buildSettings = {{\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile_name}";')
+              if 'PROVISIONING_PROFILE =' not in block:
+                  block = block.replace('buildSettings = {', f'buildSettings = {{\n\t\t\t\tPROVISIONING_PROFILE = "{profile_uuid}";')
 
               return block
 
@@ -633,7 +590,7 @@ jobs:
           echo "=== App.xcodeproj signing configuration ==="
 
           grep -n \
-            -E 'CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER' \
+            -E 'CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE' \
             "$PBXPROJ" || true
 
 
@@ -704,14 +661,6 @@ jobs:
 
       # ============================================================
       # 18. BUILD AND ARCHIVE
-      #
-      # IMPORTANT:
-      # NO PROVISIONING_PROFILE_SPECIFIER IS PASSED HERE.
-      #
-      # This prevents the profile from being inherited by:
-      # - Pods-App
-      # - Capacitor
-      # - CapacitorCordova
       # ============================================================
 
       - name: Build and Archive iOS App
@@ -728,6 +677,7 @@ jobs:
             -workspace App.xcworkspace \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
+            -destination "generic/platform=iOS" \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             | tee "$RUNNER_TEMP/xcodebuild.log"
