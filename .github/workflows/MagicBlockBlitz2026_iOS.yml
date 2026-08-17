@@ -18,12 +18,24 @@ jobs:
     environment: MagicBlockBlitz-Environment
 
     steps:
+
+      # ============================================================
+      # 1. CHECKOUT
+      # ============================================================
+
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
+
+
+      # ============================================================
+      # 2. DETERMINE PROJECT DIRECTORY
+      # ============================================================
 
       - name: Determine Target Directory
         shell: bash
         run: |
+          set -e
+
           RAW_DIR="${{ vars.MONOREPO_DIRECTORY }}"
           RAW_DIR="${RAW_DIR%/}"
 
@@ -35,72 +47,123 @@ jobs:
             TARGET_DIR="."
           fi
 
+          echo "Target Working Directory: $TARGET_DIR"
           echo "TARGET_DIR=$TARGET_DIR" >> "$GITHUB_ENV"
-          echo "Target directory: $TARGET_DIR"
+
+
+      # ============================================================
+      # 3. NODE.JS
+      # ============================================================
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4.2.0
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: ${{ env.TARGET_DIR }}/package-lock.json
 
-      - name: Show Project Files
-        working-directory: ${{ env.TARGET_DIR }}
-        run: |
-          echo "=== Project ==="
-          pwd
-          echo "=== package.json ==="
-          cat package.json
-          echo "=== Capacitor packages ==="
-          npm list @capacitor/core @capacitor/cli @capacitor/ios --depth=0 || true
+
+      # ============================================================
+      # 4. PREPARE HTML5 WEB APPLICATION
+      # ============================================================
 
       - name: Prepare Web Directory
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
+          set -e
+
           mkdir -p dist
 
-          for file in index.html index.js index.css manifest.json service-worker.js; do
+          echo "Preparing HTML5 application..."
+
+          for file in \
+            index.html \
+            index.js \
+            index.css \
+            manifest.json \
+            service-worker.js
+          do
             if [ -f "www/$file" ]; then
-              cp "www/$file" dist/
+              cp "www/$file" "dist/$file"
+              echo "Copied www/$file"
+            else
+              echo "Optional file not found: www/$file"
             fi
           done
 
           if [ -d "www/assets" ]; then
             cp -R www/assets dist/
+            echo "Copied www/assets"
           fi
 
+          echo ""
           echo "=== dist contents ==="
-          find dist -maxdepth 2 -type f | sort
+          find dist -maxdepth 3 -type f | sort
+
+
+      # ============================================================
+      # 5. INSTALL PROJECT DEPENDENCIES
+      # ============================================================
 
       - name: Install Dependencies
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
+          set -e
+
           if [ -f package-lock.json ]; then
-            npm ci --no-audit --no-fund --progress=false
+            npm ci \
+              --prefer-offline \
+              --no-audit \
+              --no-fund \
+              --progress=false
           else
-            npm install --no-audit --no-fund --progress=false
+            npm install \
+              --no-audit \
+              --no-fund \
+              --progress=false
           fi
+
+
+      # ============================================================
+      # 6. INSTALL COMPATIBLE CAPACITOR PACKAGES
+      # ============================================================
 
       - name: Install Capacitor 6
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
+          set -e
+
+          echo "Installing Capacitor 6 packages..."
+
           npm install --save-exact \
             @capacitor/core@6 \
             @capacitor/cli@6 \
             @capacitor/ios@6
 
-          echo "=== Capacitor versions ==="
+          echo ""
+          echo "=== Capacitor CLI version ==="
           npx cap --version
-          npm list @capacitor/core @capacitor/cli @capacitor/ios --depth=0
+
+          echo ""
+          echo "=== Installed Capacitor packages ==="
+          npm list \
+            @capacitor/core \
+            @capacitor/cli \
+            @capacitor/ios \
+            --depth=0 || true
+
+
+      # ============================================================
+      # 7. CREATE CAPACITOR CONFIGURATION
+      # ============================================================
 
       - name: Configure Capacitor
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
+          set -e
+
           cat > capacitor.config.json <<EOF
           {
             "appId": "${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}",
@@ -109,43 +172,71 @@ jobs:
           }
           EOF
 
+          echo "=== capacitor.config.json ==="
           cat capacitor.config.json
 
-      - name: Add / Sync iOS Platform
+
+      # ============================================================
+      # 8. CREATE / SYNC IOS PLATFORM
+      # ============================================================
+
+      - name: Add / Sync iOS Native Platform
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
-          echo "=== Capacitor doctor ==="
+          set -e
+
+          echo "=== Capacitor Doctor ==="
           npx cap doctor || true
 
           if [ ! -d "ios" ]; then
-            echo "iOS platform does not exist. Adding it..."
+            echo "iOS platform does not exist."
+            echo "Creating iOS platform..."
+
             npx cap add ios
           else
-            echo "iOS platform already exists. Syncing..."
+            echo "iOS platform already exists."
+            echo "Synchronizing iOS platform..."
+
             npx cap sync ios
           fi
 
+          echo ""
           echo "=== iOS directory ==="
           ls -la ios
 
-      - name: Generate iOS Assets
+
+      # ============================================================
+      # 9. GENERATE IOS APP ASSETS
+      # ============================================================
+
+      - name: Generate Native iOS App Icons
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
+          set -e
+
           mkdir -p assets
 
           if [ -f "www/assets/icon.png" ]; then
-            cp www/assets/icon.png assets/icon.png
+            cp "www/assets/icon.png" "assets/icon.png"
           elif [ -f "www/icon.png" ]; then
-            cp www/icon.png assets/icon.png
+            cp "www/icon.png" "assets/icon.png"
           fi
 
           if [ -f "assets/icon.png" ]; then
+            echo "Generating native iOS App Store assets..."
+
             npx @capacitor/assets generate --ios
           else
-            echo "Warning: assets/icon.png not found."
+            echo "WARNING: assets/icon.png was not found."
+            echo "Skipping icon generation."
           fi
+
+
+      # ============================================================
+      # 10. IMPORT APPLE DISTRIBUTION CERTIFICATE
+      # ============================================================
 
       - name: Import Apple Distribution Certificate
         env:
@@ -164,7 +255,10 @@ jobs:
           CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
 
-          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          echo -n "$BUILD_CERTIFICATE_BASE64" \
+            | base64 --decode > "$CERTIFICATE_PATH"
+
+          echo "Creating temporary keychain..."
 
           security create-keychain \
             -p "$KEYCHAIN_PASSWORD" \
@@ -192,11 +286,24 @@ jobs:
           security default-keychain \
             -s "$KEYCHAIN_PATH"
 
+          echo ""
+          echo "=== Available signing identities ==="
+
+          security find-identity \
+            -v \
+            -p codesigning \
+            "$KEYCHAIN_PATH"
+
+
+      # ============================================================
+      # 11. INSTALL PROVISIONING PROFILE
+      # ============================================================
+
       - name: Install Provisioning Profile
         env:
           BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE || secrets.APPLE_PROVISION_PROFILE || secrets.PROVISIONING_PROFILE_BASE64 }}
           FALLBACK_BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
-          FALLBACK_TEAM_ID: ${{ vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID }}
+          FALLBACK_TEAM_ID: ${{ vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID || 'XHNXQ72KYZ' }}
         shell: bash
         run: |
           set -e
@@ -209,23 +316,38 @@ jobs:
           PP_PATH="$RUNNER_TEMP/build_pp.mobileprovision"
           PLIST_PATH="$RUNNER_TEMP/profile.plist"
 
-          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode > "$PP_PATH"
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" \
+            | base64 --decode > "$PP_PATH"
 
-          security cms -D \
+          security cms \
+            -D \
             -i "$PP_PATH" \
             -o "$PLIST_PATH"
 
-          PROFILE_UUID=$(/usr/libexec/PlistBuddy \
-            -c "Print :UUID" "$PLIST_PATH")
+          PROFILE_UUID=$(
+            /usr/libexec/PlistBuddy \
+            -c "Print :UUID" \
+            "$PLIST_PATH"
+          )
 
-          PROFILE_NAME=$(/usr/libexec/PlistBuddy \
-            -c "Print :Name" "$PLIST_PATH")
+          PROFILE_NAME=$(
+            /usr/libexec/PlistBuddy \
+            -c "Print :Name" \
+            "$PLIST_PATH"
+          )
 
-          TEAM_ID=$(/usr/libexec/PlistBuddy \
-            -c "Print :TeamIdentifier:0" "$PLIST_PATH" || true)
+          TEAM_ID=$(
+            /usr/libexec/PlistBuddy \
+            -c "Print :TeamIdentifier:0" \
+            "$PLIST_PATH" \
+            || true
+          )
 
-          RAW_APP_ID=$(/usr/libexec/PlistBuddy \
-            -c "Print :Entitlements:application-identifier" "$PLIST_PATH")
+          RAW_APP_ID=$(
+            /usr/libexec/PlistBuddy \
+            -c "Print :Entitlements:application-identifier" \
+            "$PLIST_PATH"
+          )
 
           BUNDLE_ID="${RAW_APP_ID#*.}"
 
@@ -243,50 +365,127 @@ jobs:
           echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
 
           PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+
           mkdir -p "$PROFILE_DIR"
 
           cp "$PP_PATH" \
             "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
 
-          echo "Profile: $PROFILE_NAME"
+          echo ""
+          echo "=== Provisioning Profile ==="
+          echo "Name: $PROFILE_NAME"
           echo "UUID: $PROFILE_UUID"
-          echo "Team: $TEAM_ID"
+          echo "Team ID: $TEAM_ID"
           echo "Bundle ID: $BUNDLE_ID"
 
-      - name: Install CocoaPods
+
+      # ============================================================
+      # 12. INSTALL COCOAPODS
+      # ============================================================
+
+      - name: Install CocoaPods Dependencies
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
         run: |
+          set -e
+
+          echo "Installing CocoaPods dependencies..."
+
           pod install --repo-update
 
-      - name: Configure Xcode Signing
+
+      # ============================================================
+      # 13. DISABLE SIGNING FOR COCOAPODS
+      #
+      # IMPORTANT:
+      # The provisioning profile belongs ONLY to the App target.
+      # Pods-App, Capacitor and CapacitorCordova must not receive it.
+      # ============================================================
+
+      - name: Configure CocoaPods Signing
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
         run: |
-          PBXPROJ="App.xcodeproj/project.pbxproj"
+          set -e
 
-          if [ ! -f "$PBXPROJ" ]; then
-            echo "ERROR: Xcode project not found."
+          PODS_PROJECT="Pods/Pods.xcodeproj/project.pbxproj"
+
+          if [ ! -f "$PODS_PROJECT" ]; then
+            echo "ERROR: CocoaPods project not found:"
+            echo "$PODS_PROJECT"
             exit 1
           fi
 
-          sed -i '' \
-            's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' \
-            "$PBXPROJ" || true
+          echo "Disabling code signing for CocoaPods targets..."
 
-          sed -i '' \
-            "s/DEVELOPMENT_TEAM = [A-Z0-9]*;/DEVELOPMENT_TEAM = $APPLE_TEAM_ID;/g" \
-            "$PBXPROJ" || true
+          python3 - "$PODS_PROJECT" <<'PY'
+          import sys
+          import re
 
-          sed -i '' \
-            "s/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";/g" \
-            "$PBXPROJ" || true
+          path = sys.argv[1]
+
+          with open(path, "r", encoding="utf-8") as f:
+              data = f.read()
+
+          # CocoaPods targets must not use the application's
+          # provisioning profile.
+
+          data = re.sub(
+              r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;',
+              '',
+              data
+          )
+
+          data = re.sub(
+              r'PROVISIONING_PROFILE = [^;]*;',
+              '',
+              data
+          )
+
+          data = re.sub(
+              r'DEVELOPMENT_TEAM = [^;]*;',
+              '',
+              data
+          )
+
+          data = re.sub(
+              r'CODE_SIGNING_ALLOWED = YES;',
+              'CODE_SIGNING_ALLOWED = NO;',
+              data
+          )
+
+          data = re.sub(
+              r'CODE_SIGNING_REQUIRED = YES;',
+              'CODE_SIGNING_REQUIRED = NO;',
+              data
+          )
+
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(data)
+          PY
+
+          echo ""
+          echo "=== CocoaPods signing settings ==="
+
+          grep -n \
+            -E 'CODE_SIGN|PROVISIONING_PROFILE|DEVELOPMENT_TEAM' \
+            "$PODS_PROJECT" || true
+
+
+      # ============================================================
+      # 14. CREATE PRIVACY MANIFEST
+      # ============================================================
 
       - name: Create Privacy Manifest
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
         run: |
-          if [ ! -f App/PrivacyInfo.xcprivacy ]; then
+          set -e
+
+          if [ ! -f "App/PrivacyInfo.xcprivacy" ]; then
+
+            echo "Creating PrivacyInfo.xcprivacy..."
+
             cat > App/PrivacyInfo.xcprivacy <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -295,16 +494,225 @@ jobs:
           <dict>
               <key>NSPrivacyTracking</key>
               <false/>
+
               <key>NSPrivacyTrackingDomains</key>
               <array/>
+
               <key>NSPrivacyCollectedDataTypes</key>
               <array/>
+
               <key>NSPrivacyAccessedAPITypes</key>
               <array/>
           </dict>
           </plist>
           EOF
+
+          else
+            echo "PrivacyInfo.xcprivacy already exists."
           fi
+
+
+      # ============================================================
+      # 15. CONFIGURE SIGNING ONLY FOR THE APP PROJECT
+      #
+      # IMPORTANT:
+      # This modifies App.xcodeproj only.
+      # Pods.xcodeproj remains without a provisioning profile.
+      # ============================================================
+
+      - name: Configure App Target Signing
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
+        env:
+          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+          PROFILE_UUID: ${{ env.PROFILE_UUID }}
+        run: |
+          set -e
+
+          PBXPROJ="App.xcodeproj/project.pbxproj"
+
+          if [ ! -f "$PBXPROJ" ]; then
+            echo "ERROR: Xcode project not found:"
+            echo "$PBXPROJ"
+            exit 1
+          fi
+
+          echo "Configuring signing in App.xcodeproj..."
+
+          python3 - "$PBXPROJ" "$APPLE_TEAM_ID" "$PROFILE_UUID" <<'PY'
+          import sys
+          import re
+
+          path = sys.argv[1]
+          team = sys.argv[2]
+          profile = sys.argv[3]
+
+          with open(path, "r", encoding="utf-8") as f:
+              data = f.read()
+
+          # App.xcodeproj contains the actual application target.
+          # CocoaPods uses a separate Pods.xcodeproj and is therefore
+          # not modified here.
+
+          # Replace existing signing settings.
+          data = re.sub(
+              r'CODE_SIGN_STYLE = [^;]*;',
+              'CODE_SIGN_STYLE = Manual;',
+              data
+          )
+
+          data = re.sub(
+              r'DEVELOPMENT_TEAM = [^;]*;',
+              f'DEVELOPMENT_TEAM = {team};',
+              data
+          )
+
+          data = re.sub(
+              r'CODE_SIGN_IDENTITY = [^;]*;',
+              'CODE_SIGN_IDENTITY = "Apple Distribution";',
+              data
+          )
+
+          data = re.sub(
+              r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;',
+              f'PROVISIONING_PROFILE_SPECIFIER = "{profile}";',
+              data
+          )
+
+          # Add missing signing settings to XCBuildConfiguration
+          # blocks if they do not already exist.
+
+          def configure_block(match):
+              block = match.group(0)
+
+              if 'buildSettings = {' not in block:
+                  return block
+
+              if 'CODE_SIGN_STYLE =' not in block:
+                  block = block.replace(
+                      'buildSettings = {',
+                      'buildSettings = {\n'
+                      '\t\t\t\tCODE_SIGN_STYLE = Manual;'
+                  )
+
+              if 'DEVELOPMENT_TEAM =' not in block:
+                  block = block.replace(
+                      'buildSettings = {',
+                      'buildSettings = {\n'
+                      f'\t\t\t\tDEVELOPMENT_TEAM = {team};'
+                  )
+
+              if 'CODE_SIGN_IDENTITY =' not in block:
+                  block = block.replace(
+                      'buildSettings = {',
+                      'buildSettings = {\n'
+                      '\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";'
+                  )
+
+              if 'PROVISIONING_PROFILE_SPECIFIER =' not in block:
+                  block = block.replace(
+                      'buildSettings = {',
+                      'buildSettings = {\n'
+                      f'\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile}";'
+                  )
+
+              return block
+
+          data = re.sub(
+              r'XCBuildConfiguration\s+[^=]+=\s*\{.*?^\s*\};',
+              configure_block,
+              data,
+              flags=re.MULTILINE | re.DOTALL
+          )
+
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(data)
+          PY
+
+          echo ""
+          echo "=== App.xcodeproj signing configuration ==="
+
+          grep -n \
+            -E 'CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER' \
+            "$PBXPROJ" || true
+
+
+      # ============================================================
+      # 16. VERIFY THAT PODS DO NOT HAVE THE APP PROFILE
+      # ============================================================
+
+      - name: Verify Signing Configuration
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
+        run: |
+          set -e
+
+          echo "=== App project ==="
+
+          grep -n \
+            -E 'CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER' \
+            App.xcodeproj/project.pbxproj || true
+
+          echo ""
+          echo "=== Pods project ==="
+
+          if grep -n \
+            'PROVISIONING_PROFILE_SPECIFIER' \
+            Pods/Pods.xcodeproj/project.pbxproj; then
+
+            echo "ERROR: Pods project still contains a provisioning profile."
+            exit 1
+          fi
+
+          if grep -n \
+            'PROVISIONING_PROFILE =' \
+            Pods/Pods.xcodeproj/project.pbxproj; then
+
+            echo "ERROR: Pods project still contains PROVISIONING_PROFILE."
+            exit 1
+          fi
+
+          echo "OK: CocoaPods has no provisioning profile."
+
+
+      # ============================================================
+      # 17. SHOW XCODE BUILD SETTINGS
+      # ============================================================
+
+      - name: Verify Xcode Build Settings
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        env:
+          XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+        shell: bash
+        run: |
+          set -e
+
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -showBuildSettings \
+            > "$RUNNER_TEMP/build-settings.txt"
+
+          echo "=== Relevant signing settings ==="
+
+          grep -E \
+            'CODE_SIGN|DEVELOPMENT_TEAM|PROVISIONING_PROFILE' \
+            "$RUNNER_TEMP/build-settings.txt" \
+            || true
+
+
+      # ============================================================
+      # 18. BUILD AND ARCHIVE
+      #
+      # IMPORTANT:
+      # NO PROVISIONING_PROFILE_SPECIFIER IS PASSED HERE.
+      #
+      # This prevents the profile from being inherited by:
+      # - Pods-App
+      # - Capacitor
+      # - CapacitorCordova
+      # ============================================================
 
       - name: Build and Archive iOS App
         working-directory: ${{ env.TARGET_DIR }}/ios/App
@@ -314,25 +722,55 @@ jobs:
         run: |
           set -o pipefail
 
+          echo "Starting Xcode archive..."
+
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
             | tee "$RUNNER_TEMP/xcodebuild.log"
 
-      - name: Export IPA
-        working-directory: ${{ env.TARGET_DIR }}
+
+      # ============================================================
+      # 19. VERIFY ARCHIVE
+      # ============================================================
+
+      - name: Verify Xcode Archive
         shell: bash
         run: |
           set -e
 
-          mkdir -p ios/App/output
+          ARCHIVE_PATH="$RUNNER_TEMP/App.xcarchive"
+
+          if [ ! -d "$ARCHIVE_PATH" ]; then
+            echo "ERROR: Xcode archive was not created."
+            exit 1
+          fi
+
+          echo "Archive created successfully:"
+          echo "$ARCHIVE_PATH"
+
+          echo ""
+          echo "=== Archive application ==="
+
+          find "$ARCHIVE_PATH/Products/Applications" \
+            -maxdepth 1 \
+            -type d \
+            -name "*.app" \
+            -print
+
+
+      # ============================================================
+      # 20. CREATE EXPORT OPTIONS
+      # ============================================================
+
+      - name: Create Export Options
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          set -e
 
           cat > exportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -340,11 +778,12 @@ jobs:
             "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
+
             <key>method</key>
-            <string>app-store</string>
+            <string>app-store-connect</string>
 
             <key>teamID</key>
-            <string>$APPLE_TEAM_ID</string>
+            <string>${APPLE_TEAM_ID}</string>
 
             <key>signingStyle</key>
             <string>manual</string>
@@ -354,33 +793,154 @@ jobs:
 
             <key>provisioningProfiles</key>
             <dict>
-              <key>$BUNDLE_ID</key>
-              <string>$PROFILE_UUID</string>
+              <key>${BUNDLE_ID}</key>
+              <string>${PROFILE_UUID}</string>
             </dict>
+
           </dict>
           </plist>
           EOF
+
+          echo "=== exportOptions.plist ==="
+          cat exportOptions.plist
+
+
+      # ============================================================
+      # 21. EXPORT IPA
+      # ============================================================
+
+      - name: Export IPA Package
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          set -e
+
+          mkdir -p ios/App/output
 
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
             -exportOptionsPlist exportOptions.plist \
             -exportPath ios/App/output
 
-      - name: Verify IPA
+
+      # ============================================================
+      # 22. VERIFY IPA
+      # ============================================================
+
+      - name: Verify IPA Output
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
-          IPA_PATH=$(find ios/App/output -name "*.ipa" -print -quit)
+          set -e
+
+          IPA_PATH=$(
+            find ios/App/output \
+              -name "*.ipa" \
+              -print \
+              -quit
+          )
 
           if [ -z "$IPA_PATH" ]; then
-            echo "ERROR: No IPA found."
+            echo "ERROR: No IPA file found."
             exit 1
           fi
 
-          echo "IPA: $IPA_PATH"
+          echo "IPA successfully created:"
+          echo "$IPA_PATH"
 
-      - name: Upload IPA Artifact
-        uses: actions/upload-artifact@v4
+          echo ""
+          echo "=== IPA information ==="
+
+          xcrun xcodebuild \
+            -version
+
+          unzip -l "$IPA_PATH" \
+            | head -30
+
+
+      # ============================================================
+      # 23. UPLOAD IPA AS GITHUB ARTIFACT
+      # ============================================================
+
+      - name: Upload Signed IPA to Workflow Artifacts
+        uses: actions/upload-artifact@v4.6.1
         with:
           name: MagicBlockBlitz2026-iOS-Release
           path: ${{ env.TARGET_DIR }}/ios/App/output/*.ipa
+          if-no-files-found: error
+
+
+      # ============================================================
+      # 24. UPLOAD TO APP STORE CONNECT / TESTFLIGHT
+      # ============================================================
+
+      - name: Upload to TestFlight / App Store Connect
+        if: success()
+        working-directory: ${{ env.TARGET_DIR }}
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID || vars.APP_STORE_CONNECT_KEY_ID || 'C6HLRTWSC2' }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID || vars.APP_STORE_CONNECT_ISSUER_ID || '2e4974f6-27d6-476e-9322-0a79cff7bf00' }}
+          KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT || secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          BUILD_NOTES: ${{ inputs.build_notes }}
+        shell: bash
+        run: |
+          set -e
+
+          API_KEYS_DIR="$HOME/.appstoreconnect/private_keys"
+
+          mkdir -p "$API_KEYS_DIR"
+
+          KEY_FILE="$API_KEYS_DIR/AuthKey_${KEY_ID}.p8"
+
+          if [ -z "$KEY_CONTENT" ]; then
+            echo "ERROR: APP_STORE_CONNECT_KEY_CONTENT is missing or empty."
+            exit 1
+          fi
+
+          CLEAN_KEY=$(printf '%s' "$KEY_CONTENT" | tr -d '\r')
+
+          if echo "$CLEAN_KEY" | grep -q "BEGIN PRIVATE KEY"; then
+
+            printf '%s\n' "$CLEAN_KEY" > "$KEY_FILE"
+
+          else
+
+            printf '%s' "$CLEAN_KEY" \
+              | base64 --decode > "$KEY_FILE" 2>/dev/null \
+              || printf '%s\n' "$CLEAN_KEY" > "$KEY_FILE"
+
+          fi
+
+          chmod 600 "$KEY_FILE"
+
+          if ! grep -q "BEGIN PRIVATE KEY" "$KEY_FILE"; then
+            echo "ERROR: App Store Connect API key is invalid."
+            echo "The key must contain:"
+            echo "-----BEGIN PRIVATE KEY-----"
+            exit 1
+          fi
+
+          IPA_PATH=$(
+            find ios/App/output \
+              -name "*.ipa" \
+              -print \
+              -quit
+          )
+
+          if [ -z "$IPA_PATH" ]; then
+            echo "ERROR: No IPA package found."
+            exit 1
+          fi
+
+          echo "Uploading IPA:"
+          echo "$IPA_PATH"
+
+          echo "Build notes:"
+          echo "$BUILD_NOTES"
+
+          xcrun altool \
+            --upload-app \
+            -t ios \
+            -f "$IPA_PATH" \
+            --apiKey "$KEY_ID" \
+            --apiIssuer "$ISSUER_ID"
