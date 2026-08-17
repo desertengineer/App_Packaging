@@ -194,18 +194,7 @@ jobs:
 
           if [ -f Pods/Pods.xcodeproj/project.pbxproj ]; then
             echo "Clearing provisioning settings from CocoaPods targets before archive..."
-            python3 - <<'PY'
-            from pathlib import Path
-            import re
-            p = Path('Pods/Pods.xcodeproj/project.pbxproj')
-            text = p.read_text()
-            text = text.replace('CODE_SIGNING_ALLOWED = YES', 'CODE_SIGNING_ALLOWED = NO')
-            text = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = .*?;', 'PROVISIONING_PROFILE_SPECIFIER = "";', text)
-            text = re.sub(r'PROVISIONING_PROFILE = .*?;', 'PROVISIONING_PROFILE = "";', text)
-            text = re.sub(r'DEVELOPMENT_TEAM = .*?;', 'DEVELOPMENT_TEAM = "";', text)
-            text = re.sub(r'CODE_SIGN_STYLE = .*?;', 'CODE_SIGN_STYLE = Automatic;', text)
-            p.write_text(text)
-            PY
+            python3 -c 'from pathlib import Path; import re; p = Path("Pods/Pods.xcodeproj/project.pbxproj"); text = p.read_text(); text = text.replace("CODE_SIGNING_ALLOWED = YES", "CODE_SIGNING_ALLOWED = NO"); text = re.sub(r"PROVISIONING_PROFILE_SPECIFIER = .*?;", "PROVISIONING_PROFILE_SPECIFIER = \"\";", text); text = re.sub(r"PROVISIONING_PROFILE = .*?;", "PROVISIONING_PROFILE = \"\";", text); text = re.sub(r"DEVELOPMENT_TEAM = .*?;", "DEVELOPMENT_TEAM = \"\";", text); text = re.sub(r"CODE_SIGN_STYLE = .*?;", "CODE_SIGN_STYLE = Automatic;", text); p.write_text(text)'
             echo "Pods signing cleanup complete."
             grep -n "PROVISIONING_PROFILE\|CODE_SIGNING_ALLOWED\|DEVELOPMENT_TEAM\|CODE_SIGN_STYLE" Pods/Pods.xcodeproj/project.pbxproj | head -n 40 || true
           fi
