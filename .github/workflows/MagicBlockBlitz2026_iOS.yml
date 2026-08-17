@@ -12,16 +12,17 @@ on:
 permissions:
   contents: read
 
-jobs: 
-  
+jobs:
   build-ios:
     runs-on: macos-latest
     environment: MagicBlockBlitz-Environment
+
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v4
 
       - name: Determine Target Directory
+        shell: bash
         run: |
           RAW_DIR="${{ vars.MONOREPO_DIRECTORY }}"
           RAW_DIR="${RAW_DIR%/}"
@@ -34,34 +35,73 @@ jobs:
             TARGET_DIR="."
           fi
 
-          echo "Target Working Directory resolved to: $TARGET_DIR"
-          echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
+          echo "TARGET_DIR=$TARGET_DIR" >> "$GITHUB_ENV"
+          echo "Target directory: $TARGET_DIR"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4.2.0
+        uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ env.TARGET_DIR }}/package-lock.json
+
+      - name: Show Project Files
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          echo "=== Project ==="
+          pwd
+          echo "=== package.json ==="
+          cat package.json
+          echo "=== Capacitor packages ==="
+          npm list @capacitor/core @capacitor/cli @capacitor/ios --depth=0 || true
 
       - name: Prepare Web Directory
         working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
         run: |
           mkdir -p dist
-          cp www/index.html www/index.js www/index.css www/manifest.json www/service-worker.js dist/ || true
-          cp -r www/assets dist/ || true
+
+          for file in index.html index.js index.css manifest.json service-worker.js; do
+            if [ -f "www/$file" ]; then
+              cp "www/$file" dist/
+            fi
+          done
+
+          if [ -d "www/assets" ]; then
+            cp -R www/assets dist/
+          fi
+
+          echo "=== dist contents ==="
+          find dist -maxdepth 2 -type f | sort
 
       - name: Install Dependencies
         working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
         run: |
           if [ -f package-lock.json ]; then
-            npm ci --prefer-offline --no-audit --progress=false
+            npm ci --no-audit --no-fund --progress=false
           else
-            npm install --no-audit --no-fund --no-progress
+            npm install --no-audit --no-fund --progress=false
           fi
 
-      - name: Inject Capacitor Configuration
+      - name: Install Capacitor 6
         working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
         run: |
-          cat << 'EOF' > capacitor.config.json
+          npm install --save-exact \
+            @capacitor/core@6 \
+            @capacitor/cli@6 \
+            @capacitor/ios@6
+
+          echo "=== Capacitor versions ==="
+          npx cap --version
+          npm list @capacitor/core @capacitor/cli @capacitor/ios --depth=0
+
+      - name: Configure Capacitor
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          cat > capacitor.config.json <<EOF
           {
             "appId": "${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}",
             "appName": "${{ vars.APP_NAME || 'Magic Block Blitz 2026' }}",
@@ -69,20 +109,32 @@ jobs:
           }
           EOF
 
-      - name: Install & Sync iOS Native Platform
+          cat capacitor.config.json
+
+      - name: Add / Sync iOS Platform
         working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
         run: |
-          npm install @capacitor/ios@6 --no-save
+          echo "=== Capacitor doctor ==="
+          npx cap doctor || true
+
           if [ ! -d "ios" ]; then
-            npx --yes --package @capacitor/cli@6 cap add ios
+            echo "iOS platform does not exist. Adding it..."
+            npx cap add ios
           else
-            npx --yes --package @capacitor/cli@6 cap sync ios
+            echo "iOS platform already exists. Syncing..."
+            npx cap sync ios
           fi
 
-      - name: Generate Native iOS App Icons (App Store Compliance)
+          echo "=== iOS directory ==="
+          ls -la ios
+
+      - name: Generate iOS Assets
         working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
         run: |
           mkdir -p assets
+
           if [ -f "www/assets/icon.png" ]; then
             cp www/assets/icon.png assets/icon.png
           elif [ -f "www/icon.png" ]; then
@@ -90,210 +142,245 @@ jobs:
           fi
 
           if [ -f "assets/icon.png" ]; then
-            echo "Generating native iOS App Store assets..."
-            npx --yes @capacitor/assets generate --ios
+            npx @capacitor/assets generate --ios
           else
-            echo "⚠️ Warning: assets/icon.png not found; skipping icon generation."
+            echo "Warning: assets/icon.png not found."
           fi
 
-      - name: Import Apple Certificate to Keychain
+      - name: Import Apple Distribution Certificate
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 || secrets.APPLE_DISTRIBUTION_CERT_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS || secrets.P12_PASSWORD }}
           KEYCHAIN_PASSWORD: "temp_keychain_pass_${{ github.run_id }}"
+        shell: bash
         run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          echo -n "$BUILD_CERTIFICATE_BASE64" \vert{} base64 --decode -o $CERTIFICATE_PATH
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security list-keychains -d user -s $KEYCHAIN_PATH
+          set -e
 
-      - name: Install Provisioning Profile & Extract Metadata
+          if [ -z "$BUILD_CERTIFICATE_BASE64" ]; then
+            echo "ERROR: Apple distribution certificate secret is empty."
+            exit 1
+          fi
+
+          CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+
+          security create-keychain \
+            -p "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          security set-keychain-settings \
+            -lut 21600 \
+            "$KEYCHAIN_PATH"
+
+          security unlock-keychain \
+            -p "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          security import "$CERTIFICATE_PATH" \
+            -P "$P12_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          security list-keychains \
+            -d user \
+            -s "$KEYCHAIN_PATH"
+
+          security default-keychain \
+            -s "$KEYCHAIN_PATH"
+
+      - name: Install Provisioning Profile
         env:
           BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE || secrets.APPLE_PROVISION_PROFILE || secrets.PROVISIONING_PROFILE_BASE64 }}
           FALLBACK_BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
-          FALLBACK_TEAM_ID: ${{ vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID || 'XHNXQ72KYZ' }}
+          FALLBACK_TEAM_ID: ${{ vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID }}
+        shell: bash
         run: |
-          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
-          PLIST_PATH=$RUNNER_TEMP/profile.plist
-          echo -n "$BUILD_PROVISION_PROFILE_BASE64" \vert{} base64 --decode -o $PP_PATH
-          security cms -D -i "$PP_PATH" > $PLIST_PATH
+          set -e
 
-          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $PLIST_PATH)
-          TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" $PLIST_PATH \vert{}\vert{} echo "$FALLBACK_TEAM_ID")
-          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" $PLIST_PATH)
-          RAW_APP_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" $PLIST_PATH)
-          BUNDLE_ID=$(echo "$RAW_APP_ID" | sed 's/^[^.]*\.//')
-          if [ -z "$BUNDLE_ID" ] \vert{}\vert{} [ "$BUNDLE_ID" = "*" ]; then
+          if [ -z "$BUILD_PROVISION_PROFILE_BASE64" ]; then
+            echo "ERROR: Provisioning profile secret is empty."
+            exit 1
+          fi
+
+          PP_PATH="$RUNNER_TEMP/build_pp.mobileprovision"
+          PLIST_PATH="$RUNNER_TEMP/profile.plist"
+
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode > "$PP_PATH"
+
+          security cms -D \
+            -i "$PP_PATH" \
+            -o "$PLIST_PATH"
+
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy \
+            -c "Print :UUID" "$PLIST_PATH")
+
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy \
+            -c "Print :Name" "$PLIST_PATH")
+
+          TEAM_ID=$(/usr/libexec/PlistBuddy \
+            -c "Print :TeamIdentifier:0" "$PLIST_PATH" || true)
+
+          RAW_APP_ID=$(/usr/libexec/PlistBuddy \
+            -c "Print :Entitlements:application-identifier" "$PLIST_PATH")
+
+          BUNDLE_ID="${RAW_APP_ID#*.}"
+
+          if [ -z "$BUNDLE_ID" ] || [ "$BUNDLE_ID" = "*" ]; then
             BUNDLE_ID="$FALLBACK_BUNDLE_ID"
           fi
 
-          echo "APPLE_TEAM_ID=$TEAM_ID" >> $GITHUB_ENV
-          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
-          echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
-          echo "BUNDLE_ID=$BUNDLE_ID" >> $GITHUB_ENV
+          if [ -z "$TEAM_ID" ]; then
+            TEAM_ID="$FALLBACK_TEAM_ID"
+          fi
 
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
-          echo "Provisioning Profile Installed: $PROFILE_NAME ($PROFILE_UUID) for Bundle: $BUNDLE_ID (Team:$TEAM_ID)"
+          echo "APPLE_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
 
-      - name: Install CocoaPods Dependencies & Inject App Store Compliance
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+
+          cp "$PP_PATH" \
+            "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
+
+          echo "Profile: $PROFILE_NAME"
+          echo "UUID: $PROFILE_UUID"
+          echo "Team: $TEAM_ID"
+          echo "Bundle ID: $BUNDLE_ID"
+
+      - name: Install CocoaPods
         working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
         run: |
-          pod install || pod repo update && pod install
-          if [ -f Pods/Pods.xcodeproj/project.pbxproj ]; then
-            sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' Pods/Pods.xcodeproj/project.pbxproj || true
-            sed -i '' 's/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = "";/g' Pods/Pods.xcodeproj/project.pbxproj || true
-          fi
+          pod install --repo-update
 
-          # Ensure Privacy Manifest exists to satisfy Apple Privacy Disclosures
-          if [ ! -f App/PrivacyInfo.xcprivacy ]; then
-            echo "Creating default PrivacyInfo.xcprivacy for App Store compliance..."
-            cat << 'PLISTEOF' > App/PrivacyInfo.xcprivacy
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>NSPrivacyTracking</key><false/>
-              <key>NSPrivacyTrackingDomains</key><array/>
-              <key>NSPrivacyAccessedAPITypes</key>
-              <array>
-                  <dict>
-                      <key>NSPrivacyAccessedAPIType</key>
-                      <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
-                      <key>NSPrivacyAccessedAPITypeReasons</key>
-                      <array><string>CA92.1</string></array>
-                  </dict>
-              </array>
-              <key>NSPrivacyCollectedDataTypes</key><array/>
-          </dict>
-          </plist>
-          PLISTEOF
-          fi
-
-      - name: Configure Native Xcode Signing
+      - name: Configure Xcode Signing
         working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
         run: |
           PBXPROJ="App.xcodeproj/project.pbxproj"
-          if [ -f "$PBXPROJ" ]; then
-            sed -i '' 's/CODE_SIGN_STYLE = .*/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ" || true
-            sed -i '' "s/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = ${{ env.APPLE_TEAM_ID }};/g" "$PBXPROJ" || true
-            sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = \"${{ env.PROFILE_UUID }}\";/g" "$PBXPROJ" || true
+
+          if [ ! -f "$PBXPROJ" ]; then
+            echo "ERROR: Xcode project not found."
+            exit 1
+          fi
+
+          sed -i '' \
+            's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' \
+            "$PBXPROJ" || true
+
+          sed -i '' \
+            "s/DEVELOPMENT_TEAM = [A-Z0-9]*;/DEVELOPMENT_TEAM = $APPLE_TEAM_ID;/g" \
+            "$PBXPROJ" || true
+
+          sed -i '' \
+            "s/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";/g" \
+            "$PBXPROJ" || true
+
+      - name: Create Privacy Manifest
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
+        run: |
+          if [ ! -f App/PrivacyInfo.xcprivacy ]; then
+            cat > App/PrivacyInfo.xcprivacy <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>NSPrivacyTracking</key>
+              <false/>
+              <key>NSPrivacyTrackingDomains</key>
+              <array/>
+              <key>NSPrivacyCollectedDataTypes</key>
+              <array/>
+              <key>NSPrivacyAccessedAPITypes</key>
+              <array/>
+          </dict>
+          </plist>
+          EOF
           fi
 
       - name: Build and Archive iOS App
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         env:
-          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
           XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+        shell: bash
         run: |
+          set -o pipefail
+
           xcodebuild archive \
             -workspace App.xcworkspace \
-            -scheme "${XCODE_SCHEME}" \
+            -scheme "$XCODE_SCHEME" \
             -configuration Release \
-            -archivePath $RUNNER_TEMP/App.xcarchive \
-            -derivedDataPath $RUNNER_TEMP/DerivedData \
-            CODE_SIGN_STYLE="Manual" \
-            DEVELOPMENT_TEAM="${APPLE_TEAM_ID}" \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_IDENTITY="Apple Distribution" \
-            -quiet
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+            | tee "$RUNNER_TEMP/xcodebuild.log"
 
-      - name: Export IPA Package
+      - name: Export IPA
         working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
         run: |
+          set -e
+
           mkdir -p ios/App/output
-          cat <<EOF > exportOptions.plist
+
+          cat > exportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store-connect</string>
+            <string>app-store</string>
+
             <key>teamID</key>
-            <string>${{ env.APPLE_TEAM_ID }}</string>
+            <string>$APPLE_TEAM_ID</string>
+
             <key>signingStyle</key>
             <string>manual</string>
+
             <key>signingCertificate</key>
             <string>Apple Distribution</string>
-            <key>compileBitcode</key>
-            <false/>
+
             <key>provisioningProfiles</key>
             <dict>
-              <key>${{ env.BUNDLE_ID }}</key>
-              <string>${{ env.PROFILE_UUID }}</string>
+              <key>$BUNDLE_ID</key>
+              <string>$PROFILE_UUID</string>
             </dict>
           </dict>
           </plist>
           EOF
-          xcodebuild -exportArchive \
-            -archivePath $RUNNER_TEMP/App.xcarchive \
-            -exportOptionsPlist exportOptions.plist \
-            -exportPath ios/App/output \
-            -quiet
 
-      - name: Verify IPA Output
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist exportOptions.plist \
+            -exportPath ios/App/output
+
+      - name: Verify IPA
         working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
         run: |
-          IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
+          IPA_PATH=$(find ios/App/output -name "*.ipa" -print -quit)
+
           if [ -z "$IPA_PATH" ]; then
-            echo "❌ No IPA file found in output directory"
+            echo "ERROR: No IPA found."
             exit 1
           fi
-          echo "IPA location: $IPA_PATH"
 
-      - name: Upload Signed IPA to Workflow Artifacts
-        uses: actions/upload-artifact@v4.6.1
+          echo "IPA: $IPA_PATH"
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
         with:
           name: MagicBlockBlitz2026-iOS-Release
           path: ${{ env.TARGET_DIR }}/ios/App/output/*.ipa
-
-      - name: Upload to TestFlight / App Store Connect
-        if: success()
-        working-directory: ${{ env.TARGET_DIR }}
-        env:
-          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID || vars.APP_STORE_CONNECT_KEY_ID || 'C6HLRTWSC2' }}
-          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID || vars.APP_STORE_CONNECT_ISSUER_ID || '2e4974f6-27d6-476e-9322-0a79cff7bf00' }}
-          KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT || secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-          BUILD_NOTES: ${{ inputs.build_notes }}
-        run: |
-          API_KEYS_DIR=~/.appstoreconnect/private_keys
-          mkdir -p "$API_KEYS_DIR"
-          KEY_FILE="$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
-
-          if [ -z "$KEY_CONTENT" ]; then
-            echo "❌ Error: APP_STORE_CONNECT_KEY_CONTENT secret is missing or empty."
-            exit 1
-          fi
-
-          CLEAN_KEY=$(echo "$KEY_CONTENT" | tr -d '\r')
-          if echo "$CLEAN_KEY" | grep -q "BEGIN PRIVATE KEY"; then
-            echo "$CLEAN_KEY" > "$KEY_FILE"
-          else
-            echo "$CLEAN_KEY" \vert{} base64 --decode > "$KEY_FILE" 2>/dev/null || echo "$CLEAN_KEY" > "$KEY_FILE"
-          fi
-
-          sed -i '' 's/\r$//' "$KEY_FILE" 2>/dev/null || sed -i 's/\r$//' "$KEY_FILE" 2>/dev/null || true
-          chmod 600 "$KEY_FILE"
-
-          if ! grep -q "BEGIN PRIVATE KEY" "$KEY_FILE"; then
-            echo "❌ Error: Key file does not contain a valid '-----BEGIN PRIVATE KEY-----' header."
-            echo "Please check GitHub Secret 'APP_STORE_CONNECT_KEY_CONTENT'."
-            exit 1
-          fi
-
-          IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
-          if [ -z "$IPA_PATH" ]; then
-            echo "❌ Error: No IPA package found to upload."
-            exit 1
-          fi
-
-          echo "Uploading $IPA_PATH to App Store Connect..."
-          echo "Build notes: $BUILD_NOTES"
-          xcrun altool --upload-app \
-            -t ios \
-            -f "$IPA_PATH" \
-            --apiKey "$KEY_ID" \
-            --apiIssuer "$ISSUER_ID"
