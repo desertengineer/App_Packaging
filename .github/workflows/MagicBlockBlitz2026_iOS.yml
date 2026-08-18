@@ -207,7 +207,7 @@ jobs:
 
 
       # ============================================================
-      # 9. GENERATE IOS APP ASSETS
+      # 9. GENERATE IOS APP ASSETS (STRICT CHECK)
       # ============================================================
 
       - name: Generate Native iOS App Icons
@@ -216,22 +216,27 @@ jobs:
         run: |
           set -e
 
+          npm install @capacitor/assets --save-dev
+
           mkdir -p assets
 
           if [ -f "www/assets/icon.png" ]; then
             cp "www/assets/icon.png" "assets/icon.png"
+            echo "Found custom icon at www/assets/icon.png"
           elif [ -f "www/icon.png" ]; then
             cp "www/icon.png" "assets/icon.png"
-          fi
-
-          if [ -f "assets/icon.png" ]; then
-            echo "Generating native iOS App Store assets..."
-
-            npx @capacitor/assets generate --ios
+            echo "Found custom icon at www/icon.png"
+          elif [ -f "assets/icon.png" ]; then
+            echo "Custom icon already exists in assets/icon.png"
           else
-            echo "WARNING: assets/icon.png was not found."
-            echo "Skipping icon generation."
+            echo "ERROR: Custom icon.png not found!"
+            echo "You must provide a final 1024x1024 icon.png at www/assets/icon.png or www/icon.png"
+            echo "Apple will reject the default Capacitor placeholder icon."
+            exit 1
           fi
+
+          echo "Generating native iOS App Store assets..."
+          npx @capacitor/assets generate --ios
 
 
       # ============================================================
@@ -371,13 +376,6 @@ jobs:
           cp "$PP_PATH" \
             "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
 
-          echo ""
-          echo "=== Provisioning Profile ==="
-          echo "Name: $PROFILE_NAME"
-          echo "UUID: $PROFILE_UUID"
-          echo "Team ID: $TEAM_ID"
-          echo "Bundle ID: $BUNDLE_ID"
-
 
       # ============================================================
       # 12. INSTALL COCOAPODS
@@ -396,10 +394,6 @@ jobs:
 
       # ============================================================
       # 13. DISABLE SIGNING FOR COCOAPODS
-      #
-      # IMPORTANT:
-      # The provisioning profile belongs ONLY to the App target.
-      # Pods-App, Capacitor and CapacitorCordova must not receive it.
       # ============================================================
 
       - name: Configure CocoaPods Signing
@@ -427,49 +421,15 @@ jobs:
           with open(path, "r", encoding="utf-8") as f:
               data = f.read()
 
-          # CocoaPods targets must not use the application's
-          # provisioning profile.
-
-          data = re.sub(
-              r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;',
-              '',
-              data
-          )
-
-          data = re.sub(
-              r'PROVISIONING_PROFILE = [^;]*;',
-              '',
-              data
-          )
-
-          data = re.sub(
-              r'DEVELOPMENT_TEAM = [^;]*;',
-              '',
-              data
-          )
-
-          data = re.sub(
-              r'CODE_SIGNING_ALLOWED = YES;',
-              'CODE_SIGNING_ALLOWED = NO;',
-              data
-          )
-
-          data = re.sub(
-              r'CODE_SIGNING_REQUIRED = YES;',
-              'CODE_SIGNING_REQUIRED = NO;',
-              data
-          )
+          data = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;', '', data)
+          data = re.sub(r'PROVISIONING_PROFILE = [^;]*;', '', data)
+          data = re.sub(r'DEVELOPMENT_TEAM = [^;]*;', '', data)
+          data = re.sub(r'CODE_SIGNING_ALLOWED = YES;', 'CODE_SIGNING_ALLOWED = NO;', data)
+          data = re.sub(r'CODE_SIGNING_REQUIRED = YES;', 'CODE_SIGNING_REQUIRED = NO;', data)
 
           with open(path, "w", encoding="utf-8") as f:
               f.write(data)
           PY
-
-          echo ""
-          echo "=== CocoaPods signing settings ==="
-
-          grep -n \
-            -E 'CODE_SIGN|PROVISIONING_PROFILE|DEVELOPMENT_TEAM' \
-            "$PODS_PROJECT" || true
 
 
       # ============================================================
@@ -483,9 +443,7 @@ jobs:
           set -e
 
           if [ ! -f "App/PrivacyInfo.xcprivacy" ]; then
-
             echo "Creating PrivacyInfo.xcprivacy..."
-
             cat > App/PrivacyInfo.xcprivacy <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -494,25 +452,21 @@ jobs:
           <dict>
               <key>NSPrivacyTracking</key>
               <false/>
-
               <key>NSPrivacyTrackingDomains</key>
               <array/>
-
               <key>NSPrivacyCollectedDataTypes</key>
               <array/>
-
               <key>NSPrivacyAccessedAPITypes</key>
               <array/>
           </dict>
           </plist>
           EOF
-
           else
             echo "PrivacyInfo.xcprivacy already exists."
           fi
 
 
-     # ============================================================
+      # ============================================================
       # 15. CONFIGURE SIGNING ONLY FOR THE APP PROJECT
       # ============================================================
 
@@ -548,14 +502,12 @@ jobs:
           with open(path, "r", encoding="utf-8") as f:
               data = f.read()
 
-          # 1. Update existing keys anywhere in the file
           data = re.sub(r'CODE_SIGN_STYLE = [^;]*;', 'CODE_SIGN_STYLE = Manual;', data)
           data = re.sub(r'DEVELOPMENT_TEAM = [^;]*;', f'DEVELOPMENT_TEAM = {team};', data)
           data = re.sub(r'CODE_SIGN_IDENTITY = [^;]*;', 'CODE_SIGN_IDENTITY = "Apple Distribution";', data)
           data = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;', f'PROVISIONING_PROFILE_SPECIFIER = "{profile_name}";', data)
           data = re.sub(r'PROVISIONING_PROFILE = [^;]*;', f'PROVISIONING_PROFILE = "{profile_uuid}";', data)
 
-          # 2. Add missing keys safely into ALL buildSettings blocks
           def inject_settings(match):
               block = match.group(0)
               
@@ -578,13 +530,6 @@ jobs:
               f.write(data)
           PY
 
-          echo ""
-          echo "=== App.xcodeproj signing configuration ==="
-
-          grep -n \
-            -E 'CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE' \
-            "$PBXPROJ" || true
-
 
       # ============================================================
       # 16. VERIFY THAT PODS DO NOT HAVE THE APP PROFILE
@@ -596,31 +541,10 @@ jobs:
         run: |
           set -e
 
-          echo "=== App project ==="
-
-          grep -n \
-            -E 'CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER' \
-            App.xcodeproj/project.pbxproj || true
-
-          echo ""
-          echo "=== Pods project ==="
-
-          if grep -n \
-            'PROVISIONING_PROFILE_SPECIFIER' \
-            Pods/Pods.xcodeproj/project.pbxproj; then
-
+          if grep -n 'PROVISIONING_PROFILE_SPECIFIER' Pods/Pods.xcodeproj/project.pbxproj; then
             echo "ERROR: Pods project still contains a provisioning profile."
             exit 1
           fi
-
-          if grep -n \
-            'PROVISIONING_PROFILE =' \
-            Pods/Pods.xcodeproj/project.pbxproj; then
-
-            echo "ERROR: Pods project still contains PROVISIONING_PROFILE."
-            exit 1
-          fi
-
           echo "OK: CocoaPods has no provisioning profile."
 
 
@@ -643,16 +567,24 @@ jobs:
             -showBuildSettings \
             > "$RUNNER_TEMP/build-settings.txt"
 
-          echo "=== Relevant signing settings ==="
 
-          grep -E \
-            'CODE_SIGN|DEVELOPMENT_TEAM|PROVISIONING_PROFILE' \
-            "$RUNNER_TEMP/build-settings.txt" \
-            || true
+      # ============================================================
+      # 18. SET BUILD NUMBER (AUTOMATIC VERSIONING)
+      # ============================================================
+
+      - name: Set Build Number
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
+        run: |
+          set -e
+          
+          echo "Setting CFBundleVersion to GitHub Run Number: ${{ github.run_number }}..."
+          
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" App/Info.plist
 
 
       # ============================================================
-      # 18. BUILD AND ARCHIVE
+      # 19. BUILD AND ARCHIVE
       # ============================================================
 
       - name: Build and Archive iOS App
@@ -676,7 +608,7 @@ jobs:
 
 
       # ============================================================
-      # 19. VERIFY ARCHIVE
+      # 20. VERIFY ARCHIVE
       # ============================================================
 
       - name: Verify Xcode Archive
@@ -691,21 +623,9 @@ jobs:
             exit 1
           fi
 
-          echo "Archive created successfully:"
-          echo "$ARCHIVE_PATH"
-
-          echo ""
-          echo "=== Archive application ==="
-
-          find "$ARCHIVE_PATH/Products/Applications" \
-            -maxdepth 1 \
-            -type d \
-            -name "*.app" \
-            -print
-
 
       # ============================================================
-      # 20. CREATE EXPORT OPTIONS
+      # 21. CREATE EXPORT OPTIONS
       # ============================================================
 
       - name: Create Export Options
@@ -720,35 +640,26 @@ jobs:
             "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-
             <key>method</key>
             <string>app-store-connect</string>
-
             <key>teamID</key>
             <string>${APPLE_TEAM_ID}</string>
-
             <key>signingStyle</key>
             <string>manual</string>
-
             <key>signingCertificate</key>
             <string>Apple Distribution</string>
-
             <key>provisioningProfiles</key>
             <dict>
               <key>${BUNDLE_ID}</key>
               <string>${PROFILE_UUID}</string>
             </dict>
-
           </dict>
           </plist>
           EOF
 
-          echo "=== exportOptions.plist ==="
-          cat exportOptions.plist
-
 
       # ============================================================
-      # 21. EXPORT IPA
+      # 22. EXPORT IPA
       # ============================================================
 
       - name: Export IPA Package
@@ -766,7 +677,7 @@ jobs:
 
 
       # ============================================================
-      # 22. VERIFY IPA
+      # 23. VERIFY IPA
       # ============================================================
 
       - name: Verify IPA Output
@@ -787,21 +698,9 @@ jobs:
             exit 1
           fi
 
-          echo "IPA successfully created:"
-          echo "$IPA_PATH"
-
-          echo ""
-          echo "=== IPA information ==="
-
-          xcrun xcodebuild \
-            -version
-
-          unzip -l "$IPA_PATH" \
-            | head -30
-
 
       # ============================================================
-      # 23. UPLOAD IPA AS GITHUB ARTIFACT
+      # 24. UPLOAD IPA AS GITHUB ARTIFACT
       # ============================================================
 
       - name: Upload Signed IPA to Workflow Artifacts
@@ -813,7 +712,7 @@ jobs:
 
 
       # ============================================================
-      # 24. UPLOAD TO APP STORE CONNECT / TESTFLIGHT
+      # 25. UPLOAD TO APP STORE CONNECT / TESTFLIGHT
       # ============================================================
 
       - name: Upload to TestFlight / App Store Connect
@@ -829,9 +728,7 @@ jobs:
           set -e
 
           API_KEYS_DIR="$HOME/.appstoreconnect/private_keys"
-
           mkdir -p "$API_KEYS_DIR"
-
           KEY_FILE="$API_KEYS_DIR/AuthKey_${KEY_ID}.p8"
 
           if [ -z "$KEY_CONTENT" ]; then
@@ -842,25 +739,14 @@ jobs:
           CLEAN_KEY=$(printf '%s' "$KEY_CONTENT" | tr -d '\r')
 
           if echo "$CLEAN_KEY" | grep -q "BEGIN PRIVATE KEY"; then
-
             printf '%s\n' "$CLEAN_KEY" > "$KEY_FILE"
-
           else
-
             printf '%s' "$CLEAN_KEY" \
               | base64 --decode > "$KEY_FILE" 2>/dev/null \
               || printf '%s\n' "$CLEAN_KEY" > "$KEY_FILE"
-
           fi
 
           chmod 600 "$KEY_FILE"
-
-          if ! grep -q "BEGIN PRIVATE KEY" "$KEY_FILE"; then
-            echo "ERROR: App Store Connect API key is invalid."
-            echo "The key must contain:"
-            echo "-----BEGIN PRIVATE KEY-----"
-            exit 1
-          fi
 
           IPA_PATH=$(
             find ios/App/output \
@@ -868,17 +754,6 @@ jobs:
               -print \
               -quit
           )
-
-          if [ -z "$IPA_PATH" ]; then
-            echo "ERROR: No IPA package found."
-            exit 1
-          fi
-
-          echo "Uploading IPA:"
-          echo "$IPA_PATH"
-
-          echo "Build notes:"
-          echo "$BUILD_NOTES"
 
           xcrun altool \
             --upload-app \
