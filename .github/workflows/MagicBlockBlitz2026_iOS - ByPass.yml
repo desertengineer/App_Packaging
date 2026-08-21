@@ -1,4 +1,4 @@
-name: Build EnBlocks - iOS
+name: Build EnBlocks - iOS (UPDATE MINIMUM IOS DEPLOYMENT TARGET)
 
 on:
   workflow_dispatch:
