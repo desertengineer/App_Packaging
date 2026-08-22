@@ -171,8 +171,7 @@ jobs:
 
         echo "=== capacitor.config.json ==="
         cat capacitor.config.json
-
-
+    
     # ============================================================
     # 8. CREATE / SYNC IOS PLATFORM
     # ============================================================
@@ -186,16 +185,22 @@ jobs:
         echo "=== Capacitor Doctor ==="
         npx cap doctor || true
 
+        # Pre-warm CocoaPods trunk to prevent CDN timeout errors during Capacitor sync
+        echo "Pre-warming CocoaPods trunk..."
+        pod repo add trunk https://cdn.cocoapods.org/ || true
+        export COCOAPODS_DISABLE_STATS=true
+
         if [ ! -d "ios" ]; then
           echo "iOS platform does not exist."
           echo "Creating iOS platform..."
 
-          npx cap add ios
+          # Catch CI timeouts: Capacitor's internal pod install might fail, but Step 12 will handle it natively.
+          npx cap add ios || echo "⚠️ Capacitor pod install failed, but Step 12 will handle it."
         else
           echo "iOS platform already exists."
           echo "Synchronizing iOS platform..."
 
-          npx cap sync ios
+          npx cap sync ios || echo "⚠️ Capacitor pod install failed, but Step 12 will handle it."
         fi
 
         echo ""
