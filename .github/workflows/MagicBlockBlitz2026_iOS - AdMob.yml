@@ -453,10 +453,14 @@ jobs:
         PLIST="ios/App/App/Info.plist"
         
         # 1. Set the new public App Version (CFBundleShortVersionString) to 1.0.1
-        /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.1" "$PLIST" \vert{}\vert{} /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0.1" "$PLIST"
+        if ! /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.1" "$PLIST"; then
+          /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0.1" "$PLIST"
+        fi
         
         # 2. Set the internal Build Number (CFBundleVersion) to the unique GitHub Run Number
-        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${{ github.run_number }}" "$PLIST"
+        if ! /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$PLIST"; then
+          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${{ github.run_number }}" "$PLIST"
+        fi
         
         echo "Successfully updated Version to 1.0.1 and Build Number to ${{ github.run_number }}"
         
