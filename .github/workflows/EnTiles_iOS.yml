@@ -108,6 +108,13 @@ jobs:
       run: |
         set -e
 
+        # 1. Automatically initialize a Node project if missing
+        if [ ! -f package.json ]; then
+          echo "No package.json found. Initializing a new Node project..."
+          npm init -y
+        fi
+
+        # 2. Proceed with dependency installation
         if [ -f package-lock.json ]; then
           npm ci \
             --prefer-offline \
@@ -120,8 +127,6 @@ jobs:
             --no-fund \
             --progress=false
         fi
-
-
     # ============================================================
     # 6. INSTALL COMPATIBLE CAPACITOR & ADMOB PACKAGES
     # ============================================================
