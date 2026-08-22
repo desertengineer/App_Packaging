@@ -438,7 +438,31 @@ jobs:
         cp "$PP_PATH" \
           "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
 
-
+    # ============================================================
+    # 11.5. BUMP APP VERSION & BUILD NUMBER
+    # ============================================================
+  
+    - name: Bump iOS Version and Build Number
+      working-directory: ${{ env.TARGET_DIR }}
+      shell: bash
+      run: |
+        set -e
+        echo "Bumping version numbers to satisfy App Store Connect..."
+        
+        # Path to the Capacitor iOS Info.plist
+        PLIST="ios/App/App/Info.plist"
+        
+        # 1. Set the new public App Version (CFBundleShortVersionString) to 1.0.1
+        /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.1" $PLIST \vert{}\vert{} /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0.1" $PLIST
+        
+        # 2. Set the internal Build Number (CFBundleVersion) to the unique GitHub Run Number
+        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" $PLIST || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${{ github.run_number }}" $PLIST
+        
+        echo "Successfully updated Version to 1.0.1 and Build Number to ${{ github.run_number }}"
+        
+        echo "=== Verify Info.plist ==="
+        grep -A1 "CFBundleShortVersionString" $PLIST
+        grep -A1 "CFBundleVersion" $PLIST
     # ============================================================
     # 12. INSTALL COCOAPODS
     # ============================================================
