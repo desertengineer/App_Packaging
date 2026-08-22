@@ -1,369 +1,77 @@
-name: Build EnTiles - Android
+name: Build EnTiles - Android (AdMob)
 
 on:
   workflow_dispatch:
-    inputs:
-      build_notes:
-        description: 'Build notes / TestFlight release description (Optional)'
-        required: false
-        default: 'Manual trigger following commit completion'
-        type: string
-
-permissions:
-  contents: read
 
 jobs:
   build-android:
     runs-on: ubuntu-latest
     environment: TileMaster-Environment
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4.2.2  
-      - name: Determine Target Directory
-        run: |
-          RAW_DIR="${{ vars.MONOREPO_DIRECTORY }}"
-          RAW_DIR="${RAW_DIR%/}"
-          
-          if [ -n "$RAW_DIR" ] && [ -d "$RAW_DIR" ]; then
-            TARGET_DIR="$RAW_DIR"
-          elif [ -d "EnTiles" ]; then
-            TARGET_DIR="EnTiles"
-          else
-            TARGET_DIR="."
-          fi
-          
-          echo "Target Working Directory resolved to: $TARGET_DIR"
-          echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
+    - name: Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js & Java
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+    - uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+    
+    - name: Prepare Web Directory & Install Dependencies
+      run: |
+        mkdir -p EnTiles2048/dist
+        cp -R EnTiles2048/www/* EnTiles2048/dist/
+        cd EnTiles2048
+        npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor-community/admob --no-fund --no-audit
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4.2.0
-        with:
-          node-version: 22
+    - name: Configure Capacitor & Add Android
+      working-directory: EnTiles2048
+      run: |
+        cat > capacitor.config.json <<EOF
+        {
+          "appId": "${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.classic2048tile' }}",
+          "appName": "${{ vars.APP_NAME || 'Tile 2048 Master' }}",
+          "webDir": "dist"
+        }
+        EOF
+        npx cap add android
 
-      - name: Prepare Web Directory
-        working-directory: ${{ env.TARGET_DIR }}
-        run: |
-          mkdir -p dist
-          cp www/index.html www/index.js www/index.css dist/ || true
-          cp -r www/assets dist/ || true
+    - name: Inject AdMob App ID into AndroidManifest
+      working-directory: EnTiles2048/android/app/src/main
+      env:
+        ADMOB_APP_ID: ${{ secrets.ENTILES_ADMOB_APP_ID || 'ca-app-pub-2658659289706339~2395778751' }}
+      run: |
+        sed -i "/<\/application>/i \        <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"$ADMOB_APP_ID\"/>" AndroidManifest.xml
 
-      - name: Install Dependencies
-        working-directory: ${{ env.TARGET_DIR }}
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci --prefer-offline --no-audit --progress=false
-          else
-            npm install --no-audit --no-fund --no-progress
-          fi
+    - name: Generate Assets
+      working-directory: EnTiles2048
+      run: |
+        npm install @capacitor/assets --save-dev
+        mkdir -p assets
+        cp www/assets/icon.png assets/icon.png
+        npx @capacitor/assets generate --android
 
-      - name: Inject Capacitor Configuration (App Store Alignment)
-        working-directory: ${{ env.TARGET_DIR }}
-        run: |
-          cat << 'EOF' > capacitor.config.json
-          {
-            "appId": "${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.classic2048tile' }}",
-            "appName": "${{ vars.APP_NAME || 'Tile 2048 Master' }}",
-            "webDir": "dist"
-          }
-          EOF
+    - name: Build Android App
+      working-directory: EnTiles2048/android
+      run: ./gradlew bundleRelease assembleRelease
 
-      - name: Initialize or Sync Android Platform
-        working-directory: ${{ env.TARGET_DIR }}
-        run: |
-          npm install @capacitor/android@6 --no-save
-          
-          if [ ! -d "android" ]; then
-            npx cap add android
-          else
-            npx cap sync android
-          fi
+    - name: Sign Android Release
+      uses: r0adkll/sign-android-release@v1
+      with:
+        releaseDirectory: EnTiles2048/android/app/build/outputs/bundle/release
+        signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+        keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
-      - name: Setup Java (Zulu OpenJDK 17)
-        uses: actions/setup-java@v4.4.0
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Ensure Gradle Wrapper Executable
-        working-directory: ${{ env.TARGET_DIR }}
-        run: |
-          if [ -f android/gradlew ]; then
-            chmod +x android/gradlew || true
-          fi
-
-      - name: Decode Android Keystore
-        working-directory: ${{ env.TARGET_DIR }}
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
-
-      - name: Build and Sign Release APK via Gradle
-        working-directory: ${{ env.TARGET_DIR }}
-        env:
-          ORG_GRADLE_PROJECT_androidInjectedSigningStoreFile: ${{ github.workspace }}/${{ env.TARGET_DIR }}/android/app/release.keystore
-          ORG_GRADLE_PROJECT_androidInjectedSigningStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ORG_GRADLE_PROJECT_androidInjectedSigningKeyAlias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ORG_GRADLE_PROJECT_androidInjectedSigningKeyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          cd android
-          if [ -f ./gradlew ]; then
-            ./gradlew assembleRelease --no-daemon --console=plain
-          else
-            echo "gradlew not found"
-            exit 1
-          fi
-
-      - name: Locate and Package Android Artifact
-        working-directory: ${{ env.TARGET_DIR }}
-        run: |
-          mkdir -p final_output
-          APK_AAB_PATH=$(find android/app/build/outputs -type f \( -name "*.apk" -o -name "*.aab" \) | head -n 1 || true)
-          if [ -n "$APK_AAB_PATH" ]; then
-            echo "Found artifact: $APK_AAB_PATH"
-            EXT="${APK_AAB_PATH##*.}"
-            cp "$APK_AAB_PATH" final_output/EnTiles-Final.$EXT
-          else
-            echo "No build artifact found"
-            exit 1
-          fi
-
-      - name: Upload Verified Android Artifact
-        uses: actions/upload-artifact@v4.6.1
-        with:
-          name: EnTiles-Android-Release
-          path: ${{ env.TARGET_DIR }}/final_output/EnTiles-Final.*
-      - name: Checkout Code
-        uses: actions/checkout@v4.2.2
-      - name: Step 1 - Prepare the HTML5 Game
-        run: |
-          # Use hardcoded path to match repository structure
-          TARGET_DIR="EnTiles"
-          
-          echo "Target Working Directory resolved to: $TARGET_DIR"
-          echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4.2.0
-        with:
-          node-version: 22
-
-      - name: Prepare Web Directory & Validate Assets
-        run: |
-          mkdir -p dist
-          
-          # Copy core web files if they exist in current directory
-          for f in index.html Index.html INDEX.HTML index.js index.css manifest.json service-worker.js; do
-            if [ -f "$f" ]; then
-              cp -f "$f" dist/
-              echo "Copied $f to dist/"
-            fi
-          done
-
-          # Copy assets folder if present
-          if [ -d "assets" ]; then
-            cp -r assets dist/
-            echo "Copied assets/ to dist/assets/"
-          fi
-
-          # Ensure index.html exists in dist/
-          if [ ! -f "dist/index.html" ]; then
-            echo "Error: index.html not found in EnTiles root or failed to copy into dist!"
-            echo "Listing current directory files:"
-            ls -la
-            exit 1
-          fi
-          echo "Web build assets successfully validated and prepared in dist/."
-
-      - name: Install Dependencies & Capacitor iOS Platform
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci --prefer-offline --no-audit --progress=false
-          else
-            npm install --no-audit --no-fund --no-progress
-          fi
-          npm install @capacitor/core@^6.0.0 @capacitor/ios@^6.0.0 --save
-
-      - name: Inject Capacitor Configuration
-        run: |
-          cat << 'EOF' > capacitor.config.json
-          {
-            "appId": "${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.classic2048tile' }}",
-            "appName": "${{ vars.APP_NAME || 'Tile 2048 Master' }}",
-            "webDir": "dist"
-          }
-          EOF
-
-      - name: Sync iOS Native Platform
-        run: |
-          if [ ! -d "ios" ]; then
-            npx cap add ios
-          fi
-          npx cap sync ios
-
-      - name: Generate Native iOS App Icons & Assets
-        run: |
-          if [ -f "assets/icon.png" ]; then
-            npx --yes @capacitor/assets generate --ios
-            echo "Native iOS icons generated successfully from assets/icon.png"
-          else
-            echo "Warning: assets/icon.png not found; skipping automated asset generation."
-          fi
-
-      - name: Set Export Compliance in Info.plist
-        run: |
-          PLIST_PATH="ios/App/App/Info.plist"
-          if [ -f "$PLIST_PATH" ]; then
-            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST_PATH" 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST_PATH"
-            echo "ITSAppUsesNonExemptEncryption successfully configured as false."
-          fi
-
-      - name: Import Apple Certificate to Keychain
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 || secrets.APPLE_DISTRIBUTION_CERT_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS || secrets.P12_PASSWORD }}
-          KEYCHAIN_PASSWORD: "temp_keychain_pass_${{ github.run_id }}"
-        run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          echo -n "$BUILD_CERTIFICATE_BASE64" \vert{} base64 --decode -o $CERTIFICATE_PATH
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security list-keychains -d user -s $KEYCHAIN_PATH
-
-      - name: Install Provisioning Profile & Extract Metadata
-        env:
-          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE || secrets.APPLE_PROVISION_PROFILE || secrets.PROVISIONING_PROFILE_BASE64 }}
-          FALLBACK_BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.classic2048tile' }}
-          FALLBACK_TEAM_ID: ${{ vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID || 'XHNXQ72KYZ' }}
-        run: |
-          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
-          PLIST_PATH=$RUNNER_TEMP/profile.plist
-          echo -n "$BUILD_PROVISION_PROFILE_BASE64" \vert{} base64 --decode -o $PP_PATH
-          security cms -D -i "$PP_PATH" > $PLIST_PATH
-          
-          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $PLIST_PATH)
-          TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" $PLIST_PATH \vert{}\vert{} echo "$FALLBACK_TEAM_ID")
-          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" $PLIST_PATH)
-          RAW_APP_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" $PLIST_PATH)
-          BUNDLE_ID=$(echo "$RAW_APP_ID" | sed 's/^[^.]*\.//')
-          if [ -z "$BUNDLE_ID" ] \vert{}\vert{} [ "$BUNDLE_ID" = "*" ]; then
-            BUNDLE_ID="$FALLBACK_BUNDLE_ID"
-          fi
-          
-          echo "APPLE_TEAM_ID=$TEAM_ID" >> $GITHUB_ENV
-          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
-          echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
-          echo "BUNDLE_ID=$BUNDLE_ID" >> $GITHUB_ENV
-          
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
-          echo "Provisioning Profile Installed: $PROFILE_NAME ($PROFILE_UUID) for Bundle: $BUNDLE_ID (Team:$TEAM_ID)"
-
-      - name: Install CocoaPods Dependencies
-        run: |
-          cd ios/App
-          pod install || pod repo update && pod install
-
-      - name: Build and Archive iOS App
-        env:
-          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID || vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID }}
-          PROFILE_UUID: ${{ env.PROFILE_UUID }}
-          BUNDLE_ID: ${{ env.BUNDLE_ID }}
-          XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
-        run: |
-          cd ios/App
-          xcodebuild archive \
-            -workspace App.xcworkspace \
-            -scheme "${XCODE_SCHEME}" \
-            -configuration Release \
-            -archivePath $RUNNER_TEMP/App.xcarchive \
-            -derivedDataPath $RUNNER_TEMP/DerivedData \
-            CODE_SIGN_STYLE="Manual" \
-            DEVELOPMENT_TEAM="${APPLE_TEAM_ID}" \
-            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_UUID}" \
-            PRODUCT_BUNDLE_IDENTIFIER="${BUNDLE_ID}" \
-            -quiet
-
-      - name: Ensure Export Compliance in Archive Info.plist
-        run: |
-          ARCHIVE_PLIST=$(find$RUNNER_TEMP/App.xcarchive -name "Info.plist" -type f | grep "App.app" || true)
-          if [ -n "$ARCHIVE_PLIST" ]; then
-            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$ARCHIVE_PLIST" 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$ARCHIVE_PLIST"
-            echo "ITSAppUsesNonExemptEncryption ensured as false inside archive: $ARCHIVE_PLIST"
-          fi
-
-      - name: Export IPA Package
-        run: |
-          mkdir -p ios/App/output
-          cat <<EOF > exportOptions.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store</string>
-            <key>teamID</key>
-            <string>${{ env.APPLE_TEAM_ID || vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID }}</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>compileBitcode</key>
-            <false/>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>${BUNDLE_ID}</key>
-              <string>${PROFILE_UUID}</string>
-            </dict>
-          </dict>
-          </plist>
-          EOF
-          xcodebuild -exportArchive \
-            -archivePath $RUNNER_TEMP/App.xcarchive \
-            -exportOptionsPlist exportOptions.plist \
-            -exportPath ios/App/output \
-            -quiet
-
-      - name: Verify IPA Output
-        run: |
-          IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
-          if [ -z "$IPA_PATH" ]; then
-            echo "No IPA file found in output directory"
-            exit 1
-          fi
-          echo "IPA location: $IPA_PATH"
-
-      - name: Upload Signed IPA to Workflow Artifacts
-        uses: actions/upload-artifact@v4.6.1
-        with:
-          name: EnTiles-Android-1.0.0
-          path: ios/App/output/*.ipa
-
-      - name: Upload to TestFlight / App Store Connect
-        if: success()
-        env:
-          SECRET_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          VAR_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
-          SECRET_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          VAR_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
-          SECRET_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
-          SECRET_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-        run: |
-          KEY_ID="${SECRET_KEY_ID:-${VAR_KEY_ID:-C6HLRTWSC2}}"
-          ISSUER_ID="${SECRET_ISSUER_ID:-${VAR_ISSUER_ID:-2e4974f6-27d6-476e-9322-0a79cff7bf00}}"
-          KEY_CONTENT="${SECRET_KEY_CONTENT:-$SECRET_PRIVATE_KEY}"
-
-          API_KEYS_DIR=~/.appstoreconnect/private_keys
-          mkdir -p "$API_KEYS_DIR"
-          echo "$KEY_CONTENT" > "$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
-          chmod 600 "$API_KEYS_DIR/AuthKey_$KEY_ID.p8"
-          
-          IPA_PATH=$(find ios/App/output -name "*.ipa" | head -n 1)
-          
-          echo "Uploading $IPA_PATH to App Store Connect..."
-          xcrun altool --upload-app \
-            -t ios \
-            -f "$IPA_PATH" \
-            --apiKey "$KEY_ID" \
-            --apiIssuer "$ISSUER_ID"
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: EnTiles-Android-1.0.0
+        path: |
+          EnTiles2048/android/app/build/outputs/bundle/release/*.aab
+          EnTiles2048/android/app/build/outputs/apk/release/*.apk
