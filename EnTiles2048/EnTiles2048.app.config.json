@@ -1,8 +1,5 @@
 {
-  "appName": "Tile 2048 Master",
-  "bundleId": "com.bekeiratapps.classic2048tile",
-  "appleAppId": "6796486933",
-  "sku": "EnTiles",
-  "scheme": "App",
-  "profileName": "TileMaster2048_AppStore"
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5"
+  }
 }
