@@ -180,98 +180,60 @@ jobs:
     # ============================================================
     # 8. CREATE / SYNC IOS PLATFORM
     # ============================================================
-
     - name: Add / Sync iOS Native Platform
       working-directory: ${{ env.TARGET_DIR }}
       shell: bash
       run: |
         set -e
-
-        echo "=== Capacitor Doctor ==="
-        npx cap doctor || true
-
-        # Pre-warm CocoaPods trunk to prevent CDN timeout errors during Capacitor sync
-        echo "Pre-warming CocoaPods trunk..."
-        pod repo add trunk https://cdn.cocoapods.org/ || true
         export COCOAPODS_DISABLE_STATS=true
 
         if [ ! -d "ios" ]; then
-          echo "iOS platform does not exist."
-          echo "Creating iOS platform..."
-
-          # Catch CI timeouts: Capacitor's internal pod install might fail, but Step 12 will handle it natively.
-          npx cap add ios || echo "⚠️ Capacitor pod install failed, but Step 12 will handle it."
+          npx cap add ios
         else
-          echo "iOS platform already exists."
-          echo "Synchronizing iOS platform..."
-
-          npx cap sync ios || echo "⚠️ Capacitor pod install failed, but Step 12 will handle it."
+          npx cap sync ios
         fi
-
-        echo ""
-        echo "=== iOS directory ==="
-        ls -la ios
 
     # ============================================================
     # 8.5. UPDATE MINIMUM IOS DEPLOYMENT TARGET
     # ============================================================
-
     - name: Update Minimum iOS Version to 15.0
       working-directory: ${{ env.TARGET_DIR }}/ios/App
       shell: bash
       run: |
         set -e
         
-        echo "Updating MinimumOSVersion to 15.0 to resolve App Store Connect warning..."
+        echo "Updating MinimumOSVersion to 15.0 for modern AdMob/UMP compliance..."
         
         # 1. Update the Podfile for CocoaPods
         if [ -f "Podfile" ]; then
           sed -i '' "s/platform :ios, '[^']*'/platform :ios, '15.0'/g" Podfile
-          echo "✅ Podfile minimum iOS version updated."
-        else
-          echo "⚠️ Podfile not found."
+          echo "✅ Podfile minimum iOS version updated to 15.0."
         fi
         
         # 2. Update the Xcode Project settings
         if [ -f "App.xcodeproj/project.pbxproj" ]; then
           sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g" App.xcodeproj/project.pbxproj
-          echo "✅ project.pbxproj deployment target updated."
-        else
-          echo "⚠️ Xcode project file not found."
+          echo "✅ project.pbxproj deployment target updated to 15.0."
         fi
-        
+
     # ============================================================
     # 8.6. CONFIGURE ADMOB & ATT IN INFO.PLIST
     # ============================================================
-    
     - name: Inject AdMob Credentials & ATT into Info.plist
       working-directory: ${{ env.TARGET_DIR }}
       env:
-        # Injected specific EnTiles App ID as fallback so it works without secrets
-        EnTiles_ADMOB_APP_ID: ${{ secrets.EnTiles_ADMOB_APP_ID || 'ca-app-pub-2658659289706339~2395778751' }}
-        PUBLISHER_ID: 'pub-2658659289706339'
+        ENTILES_ADMOB_APP_ID: ${{ secrets.ENTILES_ADMOB_APP_ID || 'ca-app-pub-2658659289706339~2395778751' }}
       shell: bash
       run: |
         set -e
-        
-        echo "Injecting AdMob configuration as per Bekeirat Monetization Guide..."
         PLIST="ios/App/App/Info.plist"
         
-        # 1. Set GADApplicationIdentifier
-        /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$EnTiles_ADMOB_APP_ID'" "$PLIST" || \
-        /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '$EnTiles_ADMOB_APP_ID'" "$PLIST"
+        /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$ENTILES_ADMOB_APP_ID'" "$PLIST" || \
+        /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '$ENTILES_ADMOB_APP_ID'" "$PLIST"
         
-        # 2. Set App Tracking Transparency (ATT) Message (Required by Apple)
         ATT_MSG="This identifier will be used to deliver personalized ads to you."
         /usr/libexec/PlistBuddy -c "Add :NSUserTrackingUsageDescription string '$ATT_MSG'" "$PLIST" || \
         /usr/libexec/PlistBuddy -c "Set :NSUserTrackingUsageDescription '$ATT_MSG'" "$PLIST"
-        
-        # 3. Add SKAdNetworkIdentifier for Google AdMob
-        /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems array" "$PLIST" || true
-        /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0 dict" "$PLIST" || true
-        /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0:SKAdNetworkIdentifier string 'cstr6suwng.skadnetwork'" "$PLIST" || true
-        
-        echo "✅ AdMob Info.plist configuration completed."
 
     # ============================================================
     # 9. GENERATE IOS APP ASSETS (STRICT CHECK)

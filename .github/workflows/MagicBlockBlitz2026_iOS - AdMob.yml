@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       build_notes:
-        description: 'Build notes / TestFlight release description (Optional)'
-        required: false
-        default: 'Manual trigger following commit completion'
-        type: string
+      description: 'Build notes / TestFlight release description (Optional)'
+      required: false
+      default: 'Manual trigger following commit completion'
+      type: string
 
 permissions:
   contents: read
