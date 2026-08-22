@@ -238,7 +238,7 @@ jobs:
       working-directory: ${{ env.TARGET_DIR }}
       env:
         # Injected specific EnBlocks App ID as fallback so it works without secrets
-        ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
+        ENBLOCKS_ADMOB_APP_ID: ${{ secrets.ENBLOCKS_ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
         PUBLISHER_ID: 'pub-2658659289706339'
       shell: bash
       run: |
@@ -248,8 +248,8 @@ jobs:
         PLIST="ios/App/App/Info.plist"
         
         # 1. Set GADApplicationIdentifier
-        /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$ADMOB_APP_ID'" "$PLIST" || \
-        /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '$ADMOB_APP_ID'" "$PLIST"
+        /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$ENBLOCKS_ADMOB_APP_ID'" "$PLIST" || \
+        /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '$ENBLOCKS_ADMOB_APP_ID'" "$PLIST"
         
         # 2. Set App Tracking Transparency (ATT) Message (Required by Apple)
         ATT_MSG="This identifier will be used to deliver personalized ads to you."
