@@ -157,39 +157,43 @@ jobs:
 
 
     # ============================================================
-    # 7. CREATE CAPACITOR CONFIGURATION
+    # 7 & 8. CONFIGURE AND SYNC CAPACITOR (COMBINED)
     # ============================================================
-
-    - name: Configure Capacitor
+    - name: Configure and Sync iOS Platform
       working-directory: ${{ env.TARGET_DIR }}
+      env:
+        # Pulling from your Apple Portfolio Data for Tile 2048 Master
+        RAW_BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER }}
+        RAW_APP_NAME: ${{ vars.APP_NAME }}
       shell: bash
       run: |
         set -e
+        
+        # 1. Standard Bash Variable Fallback (Safely handles empty variables)
+        BUNDLE_ID="${RAW_BUNDLE_ID:-com.bekeiratapps.classic2048tile}"
+        APP_NAME="${RAW_APP_NAME:-Tile 2048 Master}"
 
+        echo "Generating capacitor.config.json for $APP_NAME ($BUNDLE_ID)..."
+
+        # 2. Write the JSON config using standard bash variable expansion
         cat > capacitor.config.json <<EOF
         {
-          "appId": "${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.classic2048tile' }}",
-          "appName": "${{ vars.APP_NAME || 'Tile 2048 Master' }}",
+          "appId": "$BUNDLE_ID",
+          "appName": "$APP_NAME",
           "webDir": "dist"
         }
         EOF
-
-        echo "=== capacitor.config.json ==="
+        
+        echo "=== Validated capacitor.config.json ==="
         cat capacitor.config.json
-    
-    # ============================================================
-    # 8. CREATE / SYNC IOS PLATFORM
-    # ============================================================
-    - name: Add / Sync iOS Native Platform
-      working-directory: ${{ env.TARGET_DIR }}
-      shell: bash
-      run: |
-        set -e
+        
+        # 3. Initialize iOS Platform
         export COCOAPODS_DISABLE_STATS=true
-
         if [ ! -d "ios" ]; then
+          echo "Creating iOS platform..."
           npx cap add ios
         else
+          echo "Synchronizing iOS platform..."
           npx cap sync ios
         fi
 
