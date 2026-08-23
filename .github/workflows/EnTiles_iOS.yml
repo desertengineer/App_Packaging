@@ -461,11 +461,15 @@ jobs:
           with open(path, "r", encoding="utf-8") as f:
             data = f.read()
 
-          data = re.sub(r'CODE_SIGN_STYLE = [^;];', 'CODE_SIGN_STYLE = Manual;', data)
-          data = re.sub(r'DEVELOPMENT_TEAM = [^;];', f'DEVELOPMENT_TEAM = {team};', data)
-          data = re.sub(r'CODE_SIGN_IDENTITY = [^;];', 'CODE_SIGN_IDENTITY = "Apple Distribution";', data)
-          data = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = [^;];', f'PROVISIONING_PROFILE_SPECIFIER = "{profile_name}";', data)
-          data = re.sub(r'PROVISIONING_PROFILE = [^;]*;', f'PROVISIONING_PROFILE = "{profile_uuid}";', data)
+          # Force target attributes to manual provisioning to avoid automatic signing conflicts
+          data = re.sub(r'ProvisioningStyle\s*=\s*[A-Za-z]+;', 'ProvisioningStyle = Manual;', data)
+
+          # Regex replace existing variables
+          data = re.sub(r'CODE_SIGN_STYLE\s*=\s*[^;]+;', 'CODE_SIGN_STYLE = Manual;', data)
+          data = re.sub(r'DEVELOPMENT_TEAM\s*=\s*[^;]+;', f'DEVELOPMENT_TEAM = {team};', data)
+          data = re.sub(r'CODE_SIGN_IDENTITY\s*=\s*[^;]+;', 'CODE_SIGN_IDENTITY = "Apple Distribution";', data)
+          data = re.sub(r'PROVISIONING_PROFILE_SPECIFIER\s*=\s*[^;]+;', f'PROVISIONING_PROFILE_SPECIFIER = "{profile_name}";', data)
+          data = re.sub(r'PROVISIONING_PROFILE\s*=\s*[^;]*;', f'PROVISIONING_PROFILE = "{profile_uuid}";', data)
 
           def inject_settings(match):
             block = match.group(0)
