@@ -507,11 +507,12 @@ jobs:
       - name: Verify Xcode Build Settings
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         env:
-          XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+          RAW_XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
         shell: bash
         run: |
           set -e
-          xcodebuild -workspace App.xcworkspace -scheme "$XCODE_SCHEME" -configuration Release -showBuildSettings > "$RUNNER_TEMP/build-settings.txt"
+          CLEAN_SCHEME=$(echo "$RAW_XCODE_SCHEME" | tr -d '\r\n')
+          xcodebuild -workspace App.xcworkspace -scheme "$CLEAN_SCHEME" -configuration Release -showBuildSettings > "$RUNNER_TEMP/build-settings.txt"
 
       # ============================================================
       # 18. SET BUILD NUMBER & EXPORT COMPLIANCE
@@ -533,13 +534,14 @@ jobs:
       - name: Build and Archive iOS App
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         env:
-          XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+          RAW_XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
         shell: bash
         run: |
           set -o pipefail
+          CLEAN_SCHEME=$(echo "$RAW_XCODE_SCHEME" | tr -d '\r\n')
           xcodebuild archive \
             -workspace App.xcworkspace \
-            -scheme "$XCODE_SCHEME" \
+            -scheme "$CLEAN_SCHEME" \
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
