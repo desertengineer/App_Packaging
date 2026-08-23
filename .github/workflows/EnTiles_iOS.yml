@@ -15,8 +15,8 @@ permissions:
 jobs:
   build-ios:
     runs-on: macos-latest
-    environment: TileMaster-Environment
-
+    environment: TileMaster-Environment 
+    
     steps: 
 
     # ============================================================
@@ -127,6 +127,7 @@ jobs:
             --no-fund \
             --progress=false
         fi
+        
     # ============================================================
     # 6. INSTALL COMPATIBLE CAPACITOR & ADMOB PACKAGES
     # ============================================================
@@ -159,19 +160,22 @@ jobs:
     # ============================================================
     # 7 & 8. CONFIGURE AND SYNC CAPACITOR (COMBINED)
     # ============================================================
+
     - name: Configure and Sync iOS Platform
       working-directory: ${{ env.TARGET_DIR }}
       env:
-        # Pulling from your Apple Portfolio Data for Tile 2048 Master
         RAW_BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER }}
         RAW_APP_NAME: ${{ vars.APP_NAME }}
       shell: bash
       run: |
         set -e
         
-        # 1. Standard Bash Variable Fallback (Safely handles empty variables)
-        BUNDLE_ID="${RAW_BUNDLE_ID:-com.bekeiratapps.classic2048tile}"
-        APP_NAME="${RAW_APP_NAME:-Tile 2048 Master}"
+        # 1. Clean invisible characters (newlines/carriage returns) from variables
+        CLEAN_BUNDLE_ID=$(echo "${RAW_BUNDLE_ID:-com.bekeiratapps.classic2048tile}" | tr -d '\r\n')
+        CLEAN_APP_NAME=$(echo "${RAW_APP_NAME:-Tile 2048 Master}" | tr -d '\r\n')
+
+        BUNDLE_ID="$CLEAN_BUNDLE_ID"
+        APP_NAME="$CLEAN_APP_NAME"
 
         echo "Generating capacitor.config.json for $APP_NAME ($BUNDLE_ID)..."
 
@@ -200,6 +204,7 @@ jobs:
     # ============================================================
     # 8.5. UPDATE MINIMUM IOS DEPLOYMENT TARGET
     # ============================================================
+
     - name: Update Minimum iOS Version to 15.0
       working-directory: ${{ env.TARGET_DIR }}/ios/App
       shell: bash
@@ -223,6 +228,7 @@ jobs:
     # ============================================================
     # 8.6. CONFIGURE ADMOB & ATT IN INFO.PLIST
     # ============================================================
+
     - name: Inject AdMob Credentials & ATT into Info.plist
       working-directory: ${{ env.TARGET_DIR }}
       env:
@@ -232,8 +238,11 @@ jobs:
         set -e
         PLIST="ios/App/App/Info.plist"
         
-        /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$ENTILES_ADMOB_APP_ID'" "$PLIST" || \
-        /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '$ENTILES_ADMOB_APP_ID'" "$PLIST"
+        # Strip trailing newlines just in case the secret has one
+        CLEAN_ADMOB_ID=$(echo "$ENTILES_ADMOB_APP_ID" | tr -d '\r\n')
+        
+        /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$CLEAN_ADMOB_ID'" "$PLIST" || \
+        /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '$CLEAN_ADMOB_ID'" "$PLIST"
         
         ATT_MSG="This identifier will be used to deliver personalized ads to you."
         /usr/libexec/PlistBuddy -c "Add :NSUserTrackingUsageDescription string '$ATT_MSG'" "$PLIST" || \
@@ -389,12 +398,16 @@ jobs:
 
         BUNDLE_ID="${RAW_APP_ID#*.}"
 
+        # Clean fallback variables to prevent newline corruption here too
+        CLEAN_FALLBACK_ID=$(echo "$FALLBACK_BUNDLE_ID" | tr -d '\r\n')
+        CLEAN_FALLBACK_TEAM=$(echo "$FALLBACK_TEAM_ID" | tr -d '\r\n')
+
         if [ -z "$BUNDLE_ID" ] || [ "$BUNDLE_ID" = "*" ]; then
-          BUNDLE_ID="$FALLBACK_BUNDLE_ID"
+          BUNDLE_ID="$CLEAN_FALLBACK_ID"
         fi
 
         if [ -z "$TEAM_ID" ]; then
-          TEAM_ID="$FALLBACK_TEAM_ID"
+          TEAM_ID="$CLEAN_FALLBACK_TEAM"
         fi
 
         echo "APPLE_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
@@ -412,7 +425,7 @@ jobs:
     # ============================================================
     # 11.5. BUMP APP VERSION & BUILD NUMBER
     # ============================================================
-  
+
     - name: Bump iOS Version and Build Number
       working-directory: ${{ env.TARGET_DIR }}
       shell: bash
@@ -433,7 +446,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${{ github.run_number }}" "$PLIST"
         fi
         
-        echo "Successfully updated Version to 1.0.1 and Build Number to ${{ github.run_number }}"
+        echo "Successfully updated Version to 1.0.0 and Build Number to ${{ github.run_number }}"
         
         echo "=== Verify Info.plist ==="
         grep -A1 "CFBundleShortVersionString" "$PLIST"
