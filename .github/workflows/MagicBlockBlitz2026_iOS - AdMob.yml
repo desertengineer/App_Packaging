@@ -139,7 +139,6 @@ jobs:
           @capacitor/cli@6 \
           @capacitor/ios@6
           
-        # Install AdMob Capacitor Plugin
         npm install @capacitor-community/admob
 
         echo ""
@@ -236,7 +235,7 @@ jobs:
       run: |
         set -e
         
-        echo "Injecting AdMob configuration..."
+        echo "Injecting unified ADMOB_APP_ID into Info.plist..."
         PLIST="ios/App/App/Info.plist"
         
         /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$ADMOB_APP_ID'" "$PLIST" || \
@@ -359,7 +358,6 @@ jobs:
         
         PLIST="ios/App/App/Info.plist"
         
-        # Incremented to 1.0.2 to replace rejected 1.0.1
         if ! /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.2" "$PLIST"; then
           /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0.2" "$PLIST"
         fi
@@ -532,9 +530,14 @@ jobs:
       working-directory: ${{ env.TARGET_DIR }}/ios/App
       env:
         XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+        APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+        PROFILE_NAME: ${{ env.PROFILE_NAME }}
       shell: bash
       run: |
         set -o pipefail
+
+        echo "Starting Xcode archive with explicit signing overrides..."
+
         xcodebuild archive \
           -workspace App.xcworkspace \
           -scheme "$XCODE_SCHEME" \
@@ -542,6 +545,10 @@ jobs:
           -destination "generic/platform=iOS" \
           -archivePath "$RUNNER_TEMP/App.xcarchive" \
           -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+          DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+          PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+          CODE_SIGN_STYLE="Manual" \
+          CODE_SIGN_IDENTITY="Apple Distribution" \
           | tee "$RUNNER_TEMP/xcodebuild.log"
 
 
