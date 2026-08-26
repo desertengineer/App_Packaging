@@ -45,28 +45,187 @@ let dragOffsetX = 0, dragOffsetY = 0, hoverGridX = -1, hoverGridY = -1, boardCel
 
 let musicVol = 0.5; let sfxVol = 0.8;
 
-import { AdMob } from '@capacitor-community/admob';
+import {
+    AdMob,
+    BannerAdSize,
+    BannerAdPosition,
+    RewardAdPluginEvents
+} from '@capacitor-community/admob';
 
-async function initializeAdMob() {
+// EnBlocks Specific AdMob Unit Configurations
+const AD_UNITS = {
+    APP_OPEN: 'ca-app-pub-2658659289706339/9443552777',
+    BANNER: 'ca-app-pub-2658659289706339/6079022837',
+    INTERSTITIAL: 'ca-app-pub-2658659289706339/8513614484',
+    NATIVE: 'ca-app-pub-2658659289706339/1340490025',
+    REWARDED: 'ca-app-pub-2658659289706339/5152953976',
+    REWARDED_INTERSTITIAL: 'ca-app-pub-2658659289706339/2043197600'
+};
+
+let isInterstitialLoaded = false;
+let isRewardedLoaded = false;
+let isRewardedInterstitialLoaded = false;
+
+/**
+ * Global Monetization Pipeline Initialization
+ */
+export async function initEnBlocksMonetization() {
     try {
-        // 1. Check current tracking authorization status
-        const statusInfo = await AdMob.trackingAuthorizationStatus();
+        // 1. Google UMP Consent Framework (GDPR/EEA compliance)
+        const consentInfo = await AdMob.requestConsentInfo({
+            debugGeography: 0, // 0 = Production
+            testDeviceIdentifiers: []
+        });
 
-        // 2. Request authorization if status is 'notDetermined'
-        if (statusInfo.status === 'notDetermined') {
+        if (consentInfo.isConsentFormAvailable && consentInfo.status === 1) {
+            await AdMob.showConsentForm();
+        }
+
+        // 2. Apple App Tracking Transparency Prompt
+        const trackingStatus = await AdMob.trackingAuthorizationStatus();
+        if (trackingStatus.status === 'notDetermined') {
             await AdMob.requestTrackingAuthorization();
         }
 
-        // 3. Initialize AdMob after ATT prompt decision
+        // 3. Mobile Ads SDK Launch
         await AdMob.initialize({
-            initializeForTesting: false, // Set to true during local test builds
+            initializeForTesting: false,
+            tagForChildDirectedTreatment: false,
+            tagForUnderAgeOfConsent: false
         });
 
-        console.log('AdMob successfully initialized');
-    } catch (error) {
-        console.error('Error during AdMob initialization:', error);
+        // 4. Register Event Handlers & Preload Formats
+        attachAdEventListeners();
+
+        await Promise.allSettled([
+            preloadAppOpenAd(),
+            showBannerAd(),
+            preloadInterstitial(),
+            preloadRewardedAd(),
+            preloadRewardedInterstitial()
+        ]);
+
+    } catch (err) {
+        console.error('Monetization Initialization Error:', err);
     }
 }
+
+/**
+ * Formats Implementation Functions
+ */
+
+// 1. App Open Ad (Triggers when app launches or returns to foreground)
+export async function preloadAppOpenAd() {
+    try {
+        // App Open Ads use the same prepare/show architecture as interstitials
+        await AdMob.prepareInterstitial({
+            adId: AD_UNITS.APP_OPEN,
+            isTesting: false
+        });
+    } catch (e) {
+        console.error('App Open Ad preload failed:', e);
+    }
+}
+
+// 2. Bottom Banner Ad
+export async function showBannerAd() {
+    try {
+        await AdMob.showBanner({
+            adId: AD_UNITS.BANNER,
+            adSize: BannerAdSize.BANNER,
+            position: BannerAdPosition.BOTTOM_CENTER,
+            margin: 0,
+            isTesting: false
+        });
+    } catch (e) {
+        console.error('Banner Ad failed:', e);
+    }
+}
+
+// 3. Interstitial Ad (Level completion or Game Over)
+export async function preloadInterstitial() {
+    try {
+        await AdMob.prepareInterstitial({
+            adId: AD_UNITS.INTERSTITIAL,
+            isTesting: false
+        });
+    } catch (e) {
+        console.error('Interstitial preload failed:', e);
+    }
+}
+
+export async function showInterstitial() {
+    if (isInterstitialLoaded) {
+        await AdMob.showInterstitial();
+    } else {
+        preloadInterstitial();
+    }
+}
+
+// 4. Rewarded Video Ad (Opt-in extra lives, hints, or score multipliers)
+export async function preloadRewardedAd() {
+    try {
+        await AdMob.prepareRewardVideoAd({
+            adId: AD_UNITS.REWARDED,
+            isTesting: false
+        });
+    } catch (e) {
+        console.error('Rewarded Video preload failed:', e);
+    }
+}
+
+export async function showRewardedAd(onRewardGrantedCallback) {
+    if (isRewardedLoaded) {
+        // Attach temporary reward handler
+        const rewardListener = AdMob.addListener(RewardAdPluginEvents.Rewarded, (reward) => {
+            onRewardGrantedCallback(reward);
+            rewardListener.remove();
+        });
+        await AdMob.showRewardVideoAd();
+    } else {
+        console.warn('Rewarded ad not ready yet.');
+        preloadRewardedAd();
+    }
+}
+
+// 5. Rewarded Interstitial Ad (Auto-prompted rewarded opportunities between levels)
+export async function preloadRewardedInterstitial() {
+    try {
+        await AdMob.prepareRewardVideoAd({
+            adId: AD_UNITS.REWARDED_INTERSTITIAL,
+            isTesting: false
+        });
+    } catch (e) {
+        console.error('Rewarded Interstitial preload failed:', e);
+    }
+}
+
+// 6. Native Ad Placeholder Wrapper
+export async function renderNativeAdView(containerId) {
+    // Native Ads require custom XML/Native layout rendering in Capacitor.
+    // For standard web overlays, use standard banner components or custom templates.
+    console.log(`Native Ad Unit ${AD_UNITS.NATIVE} targeted for container: ${containerId}`);
+}
+
+/**
+ * Internal Event Listeners & Auto-Reload Loops
+ */
+function attachAdEventListeners() {
+    // Interstitial Listeners
+    AdMob.addListener('onInterstitialAdLoaded', () => { isInterstitialLoaded = true; });
+    AdMob.addListener('onInterstitialAdDismissed', () => {
+        isInterstitialLoaded = false;
+        preloadInterstitial();
+    });
+
+    // Rewarded Video Listeners
+    AdMob.addListener(RewardAdPluginEvents.Loaded, () => { isRewardedLoaded = true; });
+    AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+        isRewardedLoaded = false;
+        preloadRewardedAd();
+    });
+}
+
 
 // Execute on app startup (e.g., deviceready or DOMContentLoaded)
 document.addEventListener('DOMContentLoaded', () => {
