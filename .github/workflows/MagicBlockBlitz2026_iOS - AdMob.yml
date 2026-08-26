@@ -218,7 +218,7 @@ jobs:
         fi
         
         if [ -f "App.xcodeproj/project.pbxproj" ]; then
-          sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g" App.xcodeproj/project.pbxproj
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g' App.xcodeproj/project.pbxproj
           echo "✅ project.pbxproj deployment target updated."
         fi
         
@@ -368,44 +368,30 @@ jobs:
         echo "Successfully updated Version to 1.0.2 and Build Number to ${{ github.run_number }}"
 
     # ============================================================
-    # 12. INSTALL COCOAPODS
+    # 12. CONFIGURE PODFILE & INSTALL COCOAPODS
     # ============================================================
 
-    - name: Install CocoaPods Dependencies
+    - name: Configure Podfile and Install CocoaPods
       working-directory: ${{ env.TARGET_DIR }}/ios/App
       shell: bash
       run: |
         set -e
+
+        echo "Injecting post_install hook to disable signing on dependency targets..."
+        cat << 'EOF' >> Podfile
+
+        post_install do |installer|
+          installer.pods_project.targets.each do |target|
+            target.build_configurations.each do |config|
+              config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = ""
+              config.build_settings['CODE_SIGNING_REQUIRED'] = "NO"
+              config.build_settings['CODE_SIGNING_ALLOWED'] = "NO"
+            end
+          end
+        end
+        EOF
+
         pod install --repo-update
-
-
-    # ============================================================
-    # 13. DISABLE SIGNING FOR COCOAPODS
-    # ============================================================
-
-    - name: Configure CocoaPods Signing
-      working-directory: ${{ env.TARGET_DIR }}/ios/App
-      shell: bash
-      run: |
-        set -e
-        PODS_PROJECT="Pods/Pods.xcodeproj/project.pbxproj"
-
-        python3 - "$PODS_PROJECT" <<'PY'
-        import sys, re
-        path = sys.argv[1]
-        with open(path, "r", encoding="utf-8") as f:
-            data = f.read()
-
-        data = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;', '', data)
-        data = re.sub(r'PROVISIONING_PROFILE = [^;]*;', '', data)
-        data = re.sub(r'DEVELOPMENT_TEAM = [^;]*;', '', data)
-        data = re.sub(r'CODE_SIGN_IDENTITY = [^;]*;', 'CODE_SIGN_IDENTITY = "";', data)
-        data = re.sub(r'CODE_SIGNING_ALLOWED = YES;', 'CODE_SIGNING_ALLOWED = NO;', data)
-        data = re.sub(r'CODE_SIGNING_REQUIRED = YES;', 'CODE_SIGNING_REQUIRED = NO;', data)
-
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(data)
-        PY
 
     # ============================================================
     # 14. CREATE PRIVACY MANIFEST
@@ -439,45 +425,11 @@ jobs:
         </plist>
         EOF
 
-
     # ============================================================
-    # 15. CONFIGURE SIGNING ONLY FOR THE APP PROJECT
-    # ============================================================
-
-    - name: Configure App Target Signing
-      working-directory: ${{ env.TARGET_DIR }}/ios/App
-      shell: bash
-      env:
-        APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
-        PROFILE_UUID: ${{ env.PROFILE_UUID }}
-        PROFILE_NAME: ${{ env.PROFILE_NAME }}
-      run: |
-        set -e
-        PBXPROJ="App.xcodeproj/project.pbxproj"
-
-        python3 - "$PBXPROJ" "$APPLE_TEAM_ID" "$PROFILE_UUID" "$PROFILE_NAME" <<'PY'
-        import sys, re
-        path, team, profile_uuid, profile_name = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-
-        with open(path, "r", encoding="utf-8") as f:
-            data = f.read()
-
-        data = re.sub(r'CODE_SIGN_STYLE = [^;]*;', 'CODE_SIGN_STYLE = Manual;', data)
-        data = re.sub(r'DEVELOPMENT_TEAM = [^;]*;', f'DEVELOPMENT_TEAM = {team};', data)
-        data = re.sub(r'CODE_SIGN_IDENTITY = [^;]*;', 'CODE_SIGN_IDENTITY = "Apple Distribution";', data)
-        data = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;', f'PROVISIONING_PROFILE_SPECIFIER = "{profile_name}";', data)
-        data = re.sub(r'PROVISIONING_PROFILE = [^;]*;', f'PROVISIONING_PROFILE = "{profile_uuid}";', data)
-
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(data)
-        PY
-
-
-    # ============================================================
-    # 16. VERIFY THAT PODS DO NOT HAVE THE APP PROFILE
+    # 16. VERIFY THAT PODS DO NOT HAVE PROVISIONING PROFILES
     # ============================================================
 
-    - name: Verify Signing Configuration
+    - name: Verify Pods Configuration
       working-directory: ${{ env.TARGET_DIR }}/ios/App
       shell: bash
       run: |
@@ -486,7 +438,6 @@ jobs:
           echo "ERROR: Pods project still contains a provisioning profile."
           exit 1
         fi
-
 
     # ============================================================
     # 17. SHOW XCODE BUILD SETTINGS
@@ -506,7 +457,6 @@ jobs:
           -showBuildSettings \
           > "$RUNNER_TEMP/build-settings.txt"
 
-
     # ============================================================
     # 18. SET BUILD NUMBER & EXPORT COMPLIANCE
     # ============================================================
@@ -520,7 +470,6 @@ jobs:
         /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" App/Info.plist || \
         /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" App/Info.plist
 
-
     # ============================================================
     # 19. BUILD AND ARCHIVE
     # ============================================================
@@ -529,11 +478,13 @@ jobs:
       working-directory: ${{ env.TARGET_DIR }}/ios/App
       env:
         XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+        APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+        PROFILE_NAME: ${{ env.PROFILE_NAME }}
       shell: bash
       run: |
         set -o pipefail
 
-        echo "Starting Xcode archive with target-level project signing..."
+        echo "Starting Xcode archive with direct target-level code signing..."
 
         xcodebuild archive \
           -workspace App.xcworkspace \
@@ -542,6 +493,10 @@ jobs:
           -destination "generic/platform=iOS" \
           -archivePath "$RUNNER_TEMP/App.xcarchive" \
           -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+          CODE_SIGN_STYLE=Manual \
+          DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+          PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+          CODE_SIGN_IDENTITY="Apple Distribution" \
           | tee "$RUNNER_TEMP/xcodebuild.log"
 
     # ============================================================
@@ -556,7 +511,6 @@ jobs:
           echo "ERROR: Xcode archive was not created."
           exit 1
         fi
-
 
     # ============================================================
     # 21. CREATE EXPORT OPTIONS
@@ -590,7 +544,6 @@ jobs:
         </plist>
         EOF
 
-
     # ============================================================
     # 22. EXPORT IPA
     # ============================================================
@@ -605,7 +558,6 @@ jobs:
           -archivePath "$RUNNER_TEMP/App.xcarchive" \
           -exportOptionsPlist exportOptions.plist \
           -exportPath ios/App/output
-
 
     # ============================================================
     # 23. VERIFY IPA
@@ -622,7 +574,6 @@ jobs:
           exit 1
         fi
 
-
     # ============================================================
     # 24. UPLOAD IPA AS GITHUB ARTIFACT
     # ============================================================
@@ -633,7 +584,6 @@ jobs:
         name: MagicBlockBlitz2026-iOS-Release
         path: ${{ env.TARGET_DIR }}/ios/App/output/*.ipa
         if-no-files-found: error
-
 
     # ============================================================
     # 25. UPLOAD TO APP STORE CONNECT / TESTFLIGHT
