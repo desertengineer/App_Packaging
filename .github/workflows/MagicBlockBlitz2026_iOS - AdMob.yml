@@ -272,7 +272,6 @@ jobs:
 
         npx @capacitor/assets generate --ios
 
-
     # ============================================================
     # 10. IMPORT APPLE DISTRIBUTION CERTIFICATE
     # ============================================================
@@ -400,13 +399,13 @@ jobs:
         data = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;', '', data)
         data = re.sub(r'PROVISIONING_PROFILE = [^;]*;', '', data)
         data = re.sub(r'DEVELOPMENT_TEAM = [^;]*;', '', data)
+        data = re.sub(r'CODE_SIGN_IDENTITY = [^;]*;', 'CODE_SIGN_IDENTITY = "";', data)
         data = re.sub(r'CODE_SIGNING_ALLOWED = YES;', 'CODE_SIGNING_ALLOWED = NO;', data)
         data = re.sub(r'CODE_SIGNING_REQUIRED = YES;', 'CODE_SIGNING_REQUIRED = NO;', data)
 
         with open(path, "w", encoding="utf-8") as f:
             f.write(data)
         PY
-
 
     # ============================================================
     # 14. CREATE PRIVACY MANIFEST
@@ -530,13 +529,11 @@ jobs:
       working-directory: ${{ env.TARGET_DIR }}/ios/App
       env:
         XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
-        APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
-        PROFILE_NAME: ${{ env.PROFILE_NAME }}
       shell: bash
       run: |
         set -o pipefail
 
-        echo "Starting Xcode archive with explicit signing overrides..."
+        echo "Starting Xcode archive with target-level project signing..."
 
         xcodebuild archive \
           -workspace App.xcworkspace \
@@ -545,12 +542,7 @@ jobs:
           -destination "generic/platform=iOS" \
           -archivePath "$RUNNER_TEMP/App.xcarchive" \
           -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-          DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-          PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-          CODE_SIGN_STYLE="Manual" \
-          CODE_SIGN_IDENTITY="Apple Distribution" \
           | tee "$RUNNER_TEMP/xcodebuild.log"
-
 
     # ============================================================
     # 20. VERIFY ARCHIVE
