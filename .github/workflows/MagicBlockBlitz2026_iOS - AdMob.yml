@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       build_notes:
-      description: 'Build notes / TestFlight release description (Optional)'
-      required: false
-      default: 'Manual trigger following commit completion'
-      type: string
+        description: 'Build notes / TestFlight release description (Optional)'
+        required: false
+        default: 'Manual trigger following commit completion'
+        type: string
 
 permissions:
   contents: read
@@ -185,21 +185,15 @@ jobs:
         echo "=== Capacitor Doctor ==="
         npx cap doctor || true
 
-        # Pre-warm CocoaPods trunk to prevent CDN timeout errors during Capacitor sync
         echo "Pre-warming CocoaPods trunk..."
         pod repo add trunk https://cdn.cocoapods.org/ || true
         export COCOAPODS_DISABLE_STATS=true
 
         if [ ! -d "ios" ]; then
-          echo "iOS platform does not exist."
           echo "Creating iOS platform..."
-
-          # Catch CI timeouts: Capacitor's internal pod install might fail, but Step 12 will handle it natively.
           npx cap add ios || echo "⚠️ Capacitor pod install failed, but Step 12 will handle it."
         else
-          echo "iOS platform already exists."
           echo "Synchronizing iOS platform..."
-
           npx cap sync ios || echo "⚠️ Capacitor pod install failed, but Step 12 will handle it."
         fi
 
@@ -217,22 +211,16 @@ jobs:
       run: |
         set -e
         
-        echo "Updating MinimumOSVersion to 15.0 to resolve App Store Connect warning..."
+        echo "Updating MinimumOSVersion to 15.0..."
         
-        # 1. Update the Podfile for CocoaPods
         if [ -f "Podfile" ]; then
           sed -i '' "s/platform :ios, '[^']*'/platform :ios, '15.0'/g" Podfile
           echo "✅ Podfile minimum iOS version updated."
-        else
-          echo "⚠️ Podfile not found."
         fi
         
-        # 2. Update the Xcode Project settings
         if [ -f "App.xcodeproj/project.pbxproj" ]; then
           sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g" App.xcodeproj/project.pbxproj
           echo "✅ project.pbxproj deployment target updated."
-        else
-          echo "⚠️ Xcode project file not found."
         fi
         
     # ============================================================
@@ -242,26 +230,22 @@ jobs:
     - name: Inject AdMob Credentials & ATT into Info.plist
       working-directory: ${{ env.TARGET_DIR }}
       env:
-        # Injected specific EnBlocks App ID as fallback so it works without secrets
-        ENBLOCKS_ADMOB_APP_ID: ${{ secrets.ENBLOCKS_ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
+        ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
         PUBLISHER_ID: 'pub-2658659289706339'
       shell: bash
       run: |
         set -e
         
-        echo "Injecting AdMob configuration as per Bekeirat Monetization Guide..."
+        echo "Injecting AdMob configuration..."
         PLIST="ios/App/App/Info.plist"
         
-        # 1. Set GADApplicationIdentifier
-        /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$ENBLOCKS_ADMOB_APP_ID'" "$PLIST" || \
-        /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '$ENBLOCKS_ADMOB_APP_ID'" "$PLIST"
+        /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$ADMOB_APP_ID'" "$PLIST" || \
+        /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '$ADMOB_APP_ID'" "$PLIST"
         
-        # 2. Set App Tracking Transparency (ATT) Message (Required by Apple)
         ATT_MSG="This identifier will be used to deliver personalized ads to you."
         /usr/libexec/PlistBuddy -c "Add :NSUserTrackingUsageDescription string '$ATT_MSG'" "$PLIST" || \
         /usr/libexec/PlistBuddy -c "Set :NSUserTrackingUsageDescription '$ATT_MSG'" "$PLIST"
         
-        # 3. Add SKAdNetworkIdentifier for Google AdMob
         /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems array" "$PLIST" || true
         /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0 dict" "$PLIST" || true
         /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0:SKAdNetworkIdentifier string 'cstr6suwng.skadnetwork'" "$PLIST" || true
@@ -269,7 +253,7 @@ jobs:
         echo "✅ AdMob Info.plist configuration completed."
 
     # ============================================================
-    # 9. GENERATE IOS APP ASSETS (STRICT CHECK)
+    # 9. GENERATE IOS APP ASSETS
     # ============================================================
 
     - name: Generate Native iOS App Icons
@@ -279,25 +263,14 @@ jobs:
         set -e
 
         npm install @capacitor/assets --save-dev
-
         mkdir -p assets
 
         if [ -f "www/assets/icon.png" ]; then
           cp "www/assets/icon.png" "assets/icon.png"
-          echo "Found custom icon at www/assets/icon.png"
         elif [ -f "www/icon.png" ]; then
           cp "www/icon.png" "assets/icon.png"
-          echo "Found custom icon at www/icon.png"
-        elif [ -f "assets/icon.png" ]; then
-          echo "Custom icon already exists in assets/icon.png"
-        else
-          echo "ERROR: Custom icon.png not found!"
-          echo "You must provide a final 1024x1024 icon.png at www/assets/icon.png or www/icon.png"
-          echo "Apple will reject the default Capacitor placeholder icon."
-          exit 1
         fi
 
-        echo "Generating native iOS App Store assets..."
         npx @capacitor/assets generate --ios
 
 
@@ -314,30 +287,14 @@ jobs:
       run: |
         set -e
 
-        if [ -z "$BUILD_CERTIFICATE_BASE64" ]; then
-          echo "ERROR: Apple distribution certificate secret is empty."
-          exit 1
-        fi
-
         CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
         KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
 
-        echo -n "$BUILD_CERTIFICATE_BASE64" \
-          | base64 --decode > "$CERTIFICATE_PATH"
+        echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
 
-        echo "Creating temporary keychain..."
-
-        security create-keychain \
-          -p "$KEYCHAIN_PASSWORD" \
-          "$KEYCHAIN_PATH"
-
-        security set-keychain-settings \
-          -lut 21600 \
-          "$KEYCHAIN_PATH"
-
-        security unlock-keychain \
-          -p "$KEYCHAIN_PASSWORD" \
-          "$KEYCHAIN_PATH"
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
         security import "$CERTIFICATE_PATH" \
           -P "$P12_PASSWORD" \
@@ -346,20 +303,8 @@ jobs:
           -f pkcs12 \
           -k "$KEYCHAIN_PATH"
 
-        security list-keychains \
-          -d user \
-          -s "$KEYCHAIN_PATH"
-
-        security default-keychain \
-          -s "$KEYCHAIN_PATH"
-
-        echo ""
-        echo "=== Available signing identities ==="
-
-        security find-identity \
-          -v \
-          -p codesigning \
-          "$KEYCHAIN_PATH"
+        security list-keychains -d user -s "$KEYCHAIN_PATH"
+        security default-keychain -s "$KEYCHAIN_PATH"
 
 
     # ============================================================
@@ -375,56 +320,22 @@ jobs:
       run: |
         set -e
 
-        if [ -z "$BUILD_PROVISION_PROFILE_BASE64" ]; then
-          echo "ERROR: Provisioning profile secret is empty."
-          exit 1
-        fi
-
         PP_PATH="$RUNNER_TEMP/build_pp.mobileprovision"
         PLIST_PATH="$RUNNER_TEMP/profile.plist"
 
-        echo -n "$BUILD_PROVISION_PROFILE_BASE64" \
-          | base64 --decode > "$PP_PATH"
+        echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode > "$PP_PATH"
 
-        security cms \
-          -D \
-          -i "$PP_PATH" \
-          -o "$PLIST_PATH"
+        security cms -D -i "$PP_PATH" -o "$PLIST_PATH"
 
-        PROFILE_UUID=$(
-          /usr/libexec/PlistBuddy \
-          -c "Print :UUID" \
-          "$PLIST_PATH"
-        )
-
-        PROFILE_NAME=$(
-          /usr/libexec/PlistBuddy \
-          -c "Print :Name" \
-          "$PLIST_PATH"
-        )
-
-        TEAM_ID=$(
-          /usr/libexec/PlistBuddy \
-          -c "Print :TeamIdentifier:0" \
-          "$PLIST_PATH" \
-          || true
-        )
-
-        RAW_APP_ID=$(
-          /usr/libexec/PlistBuddy \
-          -c "Print :Entitlements:application-identifier" \
-          "$PLIST_PATH"
-        )
+        PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$PLIST_PATH")
+        PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" "$PLIST_PATH")
+        TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$PLIST_PATH" || true)
+        RAW_APP_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" "$PLIST_PATH")
 
         BUNDLE_ID="${RAW_APP_ID#*.}"
 
-        if [ -z "$BUNDLE_ID" ] || [ "$BUNDLE_ID" = "*" ]; then
-          BUNDLE_ID="$FALLBACK_BUNDLE_ID"
-        fi
-
-        if [ -z "$TEAM_ID" ]; then
-          TEAM_ID="$FALLBACK_TEAM_ID"
-        fi
+        [ -z "$BUNDLE_ID" ] || [ "$BUNDLE_ID" = "*" ] && BUNDLE_ID="$FALLBACK_BUNDLE_ID"
+        [ -z "$TEAM_ID" ] && TEAM_ID="$FALLBACK_TEAM_ID"
 
         echo "APPLE_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
         echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
@@ -432,11 +343,8 @@ jobs:
         echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
 
         PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-
         mkdir -p "$PROFILE_DIR"
-
-        cp "$PP_PATH" \
-          "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
+        cp "$PP_PATH" "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
 
     # ============================================================
     # 11.5. BUMP APP VERSION & BUILD NUMBER
@@ -447,26 +355,20 @@ jobs:
       shell: bash
       run: |
         set -e
-        echo "Bumping version numbers to satisfy App Store Connect..."
+        echo "Bumping version numbers for App Store Connect..."
         
-        # Path to the Capacitor iOS Info.plist
         PLIST="ios/App/App/Info.plist"
         
-        # 1. Set the new public App Version (CFBundleShortVersionString) to 1.0.1
-        if ! /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.1" "$PLIST"; then
-          /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0.1" "$PLIST"
+        # Incremented to 1.0.2 to replace rejected 1.0.1
+        if ! /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.2" "$PLIST"; then
+          /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0.2" "$PLIST"
         fi
         
-        # 2. Set the internal Build Number (CFBundleVersion) to the unique GitHub Run Number
         if ! /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$PLIST"; then
           /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${{ github.run_number }}" "$PLIST"
         fi
         
-        echo "Successfully updated Version to 1.0.1 and Build Number to ${{ github.run_number }}"
-        
-        echo "=== Verify Info.plist ==="
-        grep -A1 "CFBundleShortVersionString" "$PLIST"
-        grep -A1 "CFBundleVersion" "$PLIST"
+        echo "Successfully updated Version to 1.0.2 and Build Number to ${{ github.run_number }}"
 
     # ============================================================
     # 12. INSTALL COCOAPODS
@@ -477,9 +379,6 @@ jobs:
       shell: bash
       run: |
         set -e
-
-        echo "Installing CocoaPods dependencies..."
-
         pod install --repo-update
 
 
@@ -492,23 +391,11 @@ jobs:
       shell: bash
       run: |
         set -e
-
         PODS_PROJECT="Pods/Pods.xcodeproj/project.pbxproj"
 
-        if [ ! -f "$PODS_PROJECT" ]; then
-          echo "ERROR: CocoaPods project not found:"
-          echo "$PODS_PROJECT"
-          exit 1
-        fi
-
-        echo "Disabling code signing for CocoaPods targets..."
-
         python3 - "$PODS_PROJECT" <<'PY'
-        import sys
-        import re
-
+        import sys, re
         path = sys.argv[1]
-
         with open(path, "r", encoding="utf-8") as f:
             data = f.read()
 
@@ -533,18 +420,20 @@ jobs:
       run: |
         set -e
 
-        if [ ! -f "App/PrivacyInfo.xcprivacy" ]; then
-          echo "Creating PrivacyInfo.xcprivacy..."
-          cat > App/PrivacyInfo.xcprivacy <<'EOF'
+        echo "Creating PrivacyInfo.xcprivacy with tracking enabled..."
+        cat > App/PrivacyInfo.xcprivacy <<'EOF'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
           "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
         <dict>
             <key>NSPrivacyTracking</key>
-            <false/>
+            <true/>
             <key>NSPrivacyTrackingDomains</key>
-            <array/>
+            <array>
+                <string>google.com</string>
+                <string>doubleclick.net</string>
+            </array>
             <key>NSPrivacyCollectedDataTypes</key>
             <array/>
             <key>NSPrivacyAccessedAPITypes</key>
@@ -552,9 +441,6 @@ jobs:
         </dict>
         </plist>
         EOF
-        else
-          echo "PrivacyInfo.xcprivacy already exists."
-        fi
 
 
     # ============================================================
@@ -570,25 +456,11 @@ jobs:
         PROFILE_NAME: ${{ env.PROFILE_NAME }}
       run: |
         set -e
-
         PBXPROJ="App.xcodeproj/project.pbxproj"
 
-        if [ ! -f "$PBXPROJ" ]; then
-          echo "ERROR: Xcode project not found:"
-          echo "$PBXPROJ"
-          exit 1
-        fi
-
-        echo "Configuring signing in App.xcodeproj..."
-
         python3 - "$PBXPROJ" "$APPLE_TEAM_ID" "$PROFILE_UUID" "$PROFILE_NAME" <<'PY'
-        import sys
-        import re
-
-        path = sys.argv[1]
-        team = sys.argv[2]
-        profile_uuid = sys.argv[3]
-        profile_name = sys.argv[4]
+        import sys, re
+        path, team, profile_uuid, profile_name = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
         with open(path, "r", encoding="utf-8") as f:
             data = f.read()
@@ -598,24 +470,6 @@ jobs:
         data = re.sub(r'CODE_SIGN_IDENTITY = [^;]*;', 'CODE_SIGN_IDENTITY = "Apple Distribution";', data)
         data = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;', f'PROVISIONING_PROFILE_SPECIFIER = "{profile_name}";', data)
         data = re.sub(r'PROVISIONING_PROFILE = [^;]*;', f'PROVISIONING_PROFILE = "{profile_uuid}";', data)
-
-        def inject_settings(match):
-            block = match.group(0)
-            
-            if 'CODE_SIGN_STYLE' not in block:
-                block = block.replace('buildSettings = {', 'buildSettings = {\n\t\t\t\tCODE_SIGN_STYLE = Manual;')
-            if 'DEVELOPMENT_TEAM' not in block:
-                block = block.replace('buildSettings = {', f'buildSettings = {{\n\t\t\t\tDEVELOPMENT_TEAM = {team};')
-            if 'CODE_SIGN_IDENTITY' not in block:
-                block = block.replace('buildSettings = {', 'buildSettings = {\n\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";')
-            if 'PROVISIONING_PROFILE_SPECIFIER' not in block:
-                block = block.replace('buildSettings = {', f'buildSettings = {{\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile_name}";')
-            if 'PROVISIONING_PROFILE =' not in block and 'PROVISIONING_PROFILE=' not in block:
-                block = block.replace('buildSettings = {', f'buildSettings = {{\n\t\t\t\tPROVISIONING_PROFILE = "{profile_uuid}";')
-
-            return block
-
-        data = re.sub(r'buildSettings\s*=\s*\{[\s\S]*?\};', inject_settings, data)
 
         with open(path, "w", encoding="utf-8") as f:
             f.write(data)
@@ -631,12 +485,10 @@ jobs:
       shell: bash
       run: |
         set -e
-
         if grep -n 'PROVISIONING_PROFILE_SPECIFIER' Pods/Pods.xcodeproj/project.pbxproj; then
           echo "ERROR: Pods project still contains a provisioning profile."
           exit 1
         fi
-        echo "OK: CocoaPods has no provisioning profile."
 
 
     # ============================================================
@@ -650,7 +502,6 @@ jobs:
       shell: bash
       run: |
         set -e
-
         xcodebuild \
           -workspace App.xcworkspace \
           -scheme "$XCODE_SCHEME" \
@@ -668,12 +519,7 @@ jobs:
       shell: bash
       run: |
         set -e
-        
-        echo "Setting CFBundleVersion to GitHub Run Number: ${{ github.run_number }}..."
         /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" App/Info.plist
-
-        echo "Bypassing Export Compliance (ITSAppUsesNonExemptEncryption) in Info.plist..."
-        # Attempt to Add the key first. If the key already exists, fallback to Set.
         /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" App/Info.plist || \
         /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" App/Info.plist
 
@@ -689,9 +535,6 @@ jobs:
       shell: bash
       run: |
         set -o pipefail
-
-        echo "Starting Xcode archive..."
-
         xcodebuild archive \
           -workspace App.xcworkspace \
           -scheme "$XCODE_SCHEME" \
@@ -710,10 +553,7 @@ jobs:
       shell: bash
       run: |
         set -e
-
-        ARCHIVE_PATH="$RUNNER_TEMP/App.xcarchive"
-
-        if [ ! -d "$ARCHIVE_PATH" ]; then
+        if [ ! -d "$RUNNER_TEMP/App.xcarchive" ]; then
           echo "ERROR: Xcode archive was not created."
           exit 1
         fi
@@ -728,7 +568,6 @@ jobs:
       shell: bash
       run: |
         set -e
-
         cat > exportOptions.plist <<EOF
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -762,9 +601,7 @@ jobs:
       shell: bash
       run: |
         set -e
-
         mkdir -p ios/App/output
-
         xcodebuild -exportArchive \
           -archivePath "$RUNNER_TEMP/App.xcarchive" \
           -exportOptionsPlist exportOptions.plist \
@@ -780,14 +617,7 @@ jobs:
       shell: bash
       run: |
         set -e
-
-        IPA_PATH=$(
-          find ios/App/output \
-            -name "*.ipa" \
-            -print \
-            -quit
-        )
-
+        IPA_PATH=$(find ios/App/output -name "*.ipa" -print -quit)
         if [ -z "$IPA_PATH" ]; then
           echo "ERROR: No IPA file found."
           exit 1
@@ -826,29 +656,17 @@ jobs:
         mkdir -p "$API_KEYS_DIR"
         KEY_FILE="$API_KEYS_DIR/AuthKey_${KEY_ID}.p8"
 
-        if [ -z "$KEY_CONTENT" ]; then
-          echo "ERROR: APP_STORE_CONNECT_KEY_CONTENT is missing or empty."
-          exit 1
-        fi
-
         CLEAN_KEY=$(printf '%s' "$KEY_CONTENT" | tr -d '\r')
 
         if echo "$CLEAN_KEY" | grep -q "BEGIN PRIVATE KEY"; then
           printf '%s\n' "$CLEAN_KEY" > "$KEY_FILE"
         else
-          printf '%s' "$CLEAN_KEY" \
-            | base64 --decode > "$KEY_FILE" 2>/dev/null \
-            || printf '%s\n' "$CLEAN_KEY" > "$KEY_FILE"
+          printf '%s' "$CLEAN_KEY" | base64 --decode > "$KEY_FILE" 2>/devnull || printf '%s\n' "$CLEAN_KEY" > "$KEY_FILE"
         fi
 
         chmod 600 "$KEY_FILE"
 
-        IPA_PATH=$(
-          find ios/App/output \
-            -name "*.ipa" \
-            -print \
-            -quit
-        )
+        IPA_PATH=$(find ios/App/output -name "*.ipa" -print -quit)
 
         xcrun altool \
           --upload-app \

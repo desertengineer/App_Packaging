@@ -45,6 +45,33 @@ let dragOffsetX = 0, dragOffsetY = 0, hoverGridX = -1, hoverGridY = -1, boardCel
 
 let musicVol = 0.5; let sfxVol = 0.8;
 
+import { AdMob } from '@capacitor-community/admob';
+
+async function initializeAdMob() {
+    try {
+        // 1. Check current tracking authorization status
+        const statusInfo = await AdMob.trackingAuthorizationStatus();
+
+        // 2. Request authorization if status is 'notDetermined'
+        if (statusInfo.status === 'notDetermined') {
+            await AdMob.requestTrackingAuthorization();
+        }
+
+        // 3. Initialize AdMob after ATT prompt decision
+        await AdMob.initialize({
+            initializeForTesting: false, // Set to true during local test builds
+        });
+
+        console.log('AdMob successfully initialized');
+    } catch (error) {
+        console.error('Error during AdMob initialization:', error);
+    }
+}
+
+// Execute on app startup (e.g., deviceready or DOMContentLoaded)
+document.addEventListener('DOMContentLoaded', () => {
+    initializeAdMob();
+});
 // ==========================================
 // Global Click Effect (Ripple)
 // ==========================================
