@@ -213,27 +213,18 @@ jobs:
     - name: Generate Native iOS App Icons
       working-directory: ${{ env.TARGET_DIR }}
       run: |
+        set -e
+
         npm install @capacitor/assets --save-dev
-        
-        # Create target assets folder if missing
         mkdir -p assets
-        
-        # Copy icon from root assets folder if not present in subfolder
-        if [ ! -f "assets/icon.png" ] && [ ! -f "assets/icon-only.png" ]; then
-          if [ -f "../assets/icon.png" ]; then
-            cp ../assets/icon.png assets/icon.png
-          elif [ -f "../assets/icon-only.png" ]; then
-            cp ../assets/icon-only.png assets/icon-only.png
-          fi
-        fi
-        
-        # Ensure icon-only.png exists for full Capacitor CLI compatibility
-        if [ -f "assets/icon.png" ] && [ ! -f "assets/icon-only.png" ]; then
-          cp assets/icon.png assets/icon-only.png
+
+        if [ -f "www/assets/icon.png" ]; then
+          cp "www/assets/icon.png" "assets/icon.png"
+        elif [ -f "www/icon.png" ]; then
+          cp "www/icon.png" "assets/icon.png"
         fi
 
-        # Generate iOS assets with verbose logging
-        npx @capacitor/assets generate --ios --verbose
+        npx @capacitor/assets generate --ios
 
     # ============================================================
     # 11. IMPORT APPLE DISTRIBUTION CERTIFICATE
