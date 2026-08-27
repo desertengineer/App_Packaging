@@ -3,6 +3,11 @@ name: EnTiles - iOS (AdMob)
 on:
   workflow_dispatch:
     inputs:
+      environment_name:
+        description: "Target Environment (e.g., TileMaster-Environment)"
+        required: true
+        type: string
+
       build_notes:
         description: "Build notes / TestFlight release description (Optional)"
         required: false
