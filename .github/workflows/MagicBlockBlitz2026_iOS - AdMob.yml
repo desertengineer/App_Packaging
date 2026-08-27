@@ -618,18 +618,36 @@ jobs:
         mkdir -p "$API_KEYS_DIR"
         KEY_FILE="$API_KEYS_DIR/AuthKey_${KEY_ID}.p8"
 
-        CLEAN_KEY=$(printf '%s' "$KEY_CONTENT" | tr -d '\r')
-
-        if echo "$CLEAN_KEY" | grep -q "BEGIN PRIVATE KEY"; then
-          printf '%s\n' "$CLEAN_KEY" > "$KEY_FILE"
+        echo "Processing App Store Connect Private Key..."
+        
+        # Check if the key is base64 encoded by attempting to decode it quietly
+        if echo "$KEY_CONTENT" | base64 --decode >/dev/null 2>&1; then
+          echo "Base64 encoded key detected. Decoding to .p8 file..."
+          echo "$KEY_CONTENT" | base64 --decode > "$KEY_FILE"
         else
-          printf '%s' "$CLEAN_KEY" | base64 --decode > "$KEY_FILE" 2>/devnull || printf '%s\n' "$CLEAN_KEY" > "$KEY_FILE"
+          echo "Plain text key detected. Saving directly to .p8 file..."
+          # Using printf ensures newlines are strictly preserved
+          printf "%s\n" "$KEY_CONTENT" > "$KEY_FILE"
         fi
 
+        # Apple's tools require strict permissions on the key file
         chmod 600 "$KEY_FILE"
 
+        # Sanity check: Ensure the file actually has content
+        if [ ! -s "$KEY_FILE" ]; then
+          echo "ERROR: AuthKey file is empty. Please verify your GitHub Secret contains the key."
+          exit 1
+        fi
+
+        # Locate the compiled app package
         IPA_PATH=$(find ios/App/output -name "*.ipa" -print -quit)
 
+        if [ -z "$IPA_PATH" ]; then
+          echo "ERROR: No IPA file found to upload."
+          exit 1
+        fi
+
+        echo "Uploading $IPA_PATH to App Store Connect..."
         xcrun altool \
           --upload-app \
           -t ios \
