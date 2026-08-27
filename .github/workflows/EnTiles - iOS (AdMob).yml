@@ -212,33 +212,28 @@ jobs:
     # ============================================================
     - name: Generate Native iOS App Icons
       working-directory: ${{ env.TARGET_DIR }}
-      shell: bash
       run: |
-        set -e
         npm install @capacitor/assets --save-dev
+        
+        # Create target assets folder if missing
         mkdir -p assets
-
-        HAS_ICON=false
-
-        if [ -f "www/assets/icon.png" ]; then
-          cp "www/assets/icon.png" "assets/icon.png"
-          HAS_ICON=true
-        elif [ -f "www/icon.png" ]; then
-          cp "www/icon.png" "assets/icon.png"
-          HAS_ICON=true
-        elif [ -f "assets/icon.png" ]; then
-          echo "Custom icon already exists in assets/icon.png"
-          HAS_ICON=true
-        elif [ -f "icon.png" ]; then
-          cp "icon.png" "assets/icon.png"
-          HAS_ICON=true
-        else
-          echo "WARNING: Custom icon.png not found! Default Capacitor icons will be used."
+        
+        # Copy icon from root assets folder if not present in subfolder
+        if [ ! -f "assets/icon.png" ] && [ ! -f "assets/icon-only.png" ]; then
+          if [ -f "../assets/icon.png" ]; then
+            cp ../assets/icon.png assets/icon.png
+          elif [ -f "../assets/icon-only.png" ]; then
+            cp ../assets/icon-only.png assets/icon-only.png
+          fi
+        fi
+        
+        # Ensure icon-only.png exists for full Capacitor CLI compatibility
+        if [ -f "assets/icon.png" ] && [ ! -f "assets/icon-only.png" ]; then
+          cp assets/icon.png assets/icon-only.png
         fi
 
-        if [ "$HAS_ICON" = true ]; then
-          npx @capacitor/assets generate --ios
-        fi
+        # Generate iOS assets with verbose logging
+        npx @capacitor/assets generate --ios --verbose
 
     # ============================================================
     # 11. IMPORT APPLE DISTRIBUTION CERTIFICATE
