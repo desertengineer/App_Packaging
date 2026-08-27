@@ -377,19 +377,32 @@ jobs:
       run: |
         set -e
 
-        echo "Injecting post_install hook to disable signing on dependency targets..."
-        cat << 'EOF' >> Podfile
+        echo "Injecting signing overrides into the existing post_install hook..."
+        python3 -c "
+        with open('Podfile', 'r') as f:
+            lines = f.readlines()
 
-        post_install do |installer|
+        injection = '''
           installer.pods_project.targets.each do |target|
             target.build_configurations.each do |config|
-              config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = ""
-              config.build_settings['CODE_SIGNING_REQUIRED'] = "NO"
-              config.build_settings['CODE_SIGNING_ALLOWED'] = "NO"
+              config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = \"\"
+              config.build_settings['CODE_SIGNING_REQUIRED'] = \"NO\"
+              config.build_settings['CODE_SIGNING_ALLOWED'] = \"NO\"
             end
           end
-        end
-        EOF
+        '''
+
+        for i, line in enumerate(lines):
+            if 'post_install do |installer|' in line:
+                lines.insert(i + 1, injection)
+                break
+        else:
+            # Fallback just in case Capacitor didn't generate one
+            lines.append('\npost_install do |installer|\n' + injection + 'end\n')
+
+        with open('Podfile', 'w') as f:
+            f.writelines(lines)
+        "
 
         pod install --repo-update
 
