@@ -83,14 +83,20 @@ jobs:
           if [ -f "www/$file" ]; then
             cp "www/$file" "dist/$file"
             echo "Copied www/$file"
+          elif [ -f "$file" ]; then
+            cp "$file" "dist/$file"
+            echo "Copied $file"
           else
-            echo "Optional file not found: www/$file"
+            echo "Optional file not found: $file"
           fi
         done
 
         if [ -d "www/assets" ]; then
           cp -R www/assets dist/
           echo "Copied www/assets"
+        elif [ -d "assets" ]; then
+          cp -R assets dist/
+          echo "Copied assets"
         fi
 
         echo ""
@@ -139,7 +145,7 @@ jobs:
           @capacitor/cli@6 \
           @capacitor/ios@6
           
-        npm install @capacitor-community/admob
+        npm install @capacitor-community/admob@6 || npm install @capacitor-community/admob
 
         echo ""
         echo "=== Capacitor CLI version ==="
@@ -170,7 +176,7 @@ jobs:
 
         echo "=== capacitor.config.json ==="
         cat capacitor.config.json
-    
+
     # ============================================================
     # 8. CREATE / SYNC IOS PLATFORM
     # ============================================================
@@ -190,10 +196,10 @@ jobs:
 
         if [ ! -d "ios" ]; then
           echo "Creating iOS platform..."
-          npx cap add ios || echo "⚠️ Capacitor pod install failed, but Step 12 will handle it."
+          npx cap add ios || echo "⚠️ Capacitor pod install failed, step 12 will handle it."
         else
           echo "Synchronizing iOS platform..."
-          npx cap sync ios || echo "⚠️ Capacitor pod install failed, but Step 12 will handle it."
+          npx cap sync ios || echo "⚠️ Capacitor pod install failed, step 12 will handle it."
         fi
 
         echo ""
@@ -221,16 +227,15 @@ jobs:
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g' App.xcodeproj/project.pbxproj
           echo "✅ project.pbxproj deployment target updated."
         fi
-        
+
     # ============================================================
     # 8.6. CONFIGURE ADMOB & ATT IN INFO.PLIST
     # ============================================================
-    
+
     - name: Inject AdMob Credentials & ATT into Info.plist
       working-directory: ${{ env.TARGET_DIR }}
       env:
         ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
-        PUBLISHER_ID: 'pub-2658659289706339'
       shell: bash
       run: |
         set -e
@@ -270,7 +275,7 @@ jobs:
           cp "www/icon.png" "assets/icon.png"
         fi
 
-        npx @capacitor/assets generate --ios
+        npx @capacitor/assets generate --ios || echo "⚠️ Asset generation skipped/warning"
 
     # ============================================================
     # 10. IMPORT APPLE DISTRIBUTION CERTIFICATE
@@ -347,7 +352,7 @@ jobs:
     # ============================================================
     # 11.5. BUMP APP VERSION & BUILD NUMBER
     # ============================================================
-  
+
     - name: Bump iOS Version and Build Number
       working-directory: ${{ env.TARGET_DIR }}
       shell: bash
@@ -377,7 +382,7 @@ jobs:
       run: |
         set -e
 
-        echo "Injecting signing overrides into the existing post_install hook..."
+        echo "Injecting signing and debug symbol build settings into Podfile..."
         python3 -c "
         with open('Podfile', 'r') as f:
             lines = f.readlines()
@@ -388,6 +393,7 @@ jobs:
               config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = \"\"
               config.build_settings['CODE_SIGNING_REQUIRED'] = \"NO\"
               config.build_settings['CODE_SIGNING_ALLOWED'] = \"NO\"
+              config.build_settings['DEBUG_INFORMATION_FORMAT'] = \"dwarf-with-dsym\"
             end
           end
         '''
@@ -397,7 +403,6 @@ jobs:
                 lines.insert(i + 1, injection)
                 break
         else:
-            # Fallback just in case Capacitor didn't generate one
             lines.append('\npost_install do |installer|\n' + injection + 'end\n')
 
         with open('Podfile', 'w') as f:
@@ -453,24 +458,6 @@ jobs:
         fi
 
     # ============================================================
-    # 17. SHOW XCODE BUILD SETTINGS
-    # ============================================================
-
-    - name: Verify Xcode Build Settings
-      working-directory: ${{ env.TARGET_DIR }}/ios/App
-      env:
-        XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
-      shell: bash
-      run: |
-        set -e
-        xcodebuild \
-          -workspace App.xcworkspace \
-          -scheme "$XCODE_SCHEME" \
-          -configuration Release \
-          -showBuildSettings \
-          > "$RUNNER_TEMP/build-settings.txt"
-
-    # ============================================================
     # 18. SET BUILD NUMBER & EXPORT COMPLIANCE
     # ============================================================
 
@@ -484,7 +471,7 @@ jobs:
         /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" App/Info.plist
 
     # ============================================================
-    # 19. BUILD AND ARCHIVE
+    # 19. BUILD AND ARCHIVE WITH dSYM DEBUG SYMBOLS
     # ============================================================
 
     - name: Build and Archive iOS App
@@ -497,7 +484,7 @@ jobs:
       run: |
         set -o pipefail
 
-        echo "Starting Xcode archive with direct target-level code signing..."
+        echo "Starting Xcode archive with debug symbol generation..."
 
         xcodebuild archive \
           -workspace App.xcworkspace \
@@ -506,6 +493,9 @@ jobs:
           -destination "generic/platform=iOS" \
           -archivePath "$RUNNER_TEMP/App.xcarchive" \
           -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+          DEBUG_INFORMATION_FORMAT="dwarf-with-dsym" \
+          GCC_GENERATE_DEBUGGING_SYMBOLS=YES \
+          STRIP_INSTALLED_PRODUCT=YES \
           CODE_SIGN_STYLE=Manual \
           DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
           PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
@@ -526,7 +516,7 @@ jobs:
         fi
 
     # ============================================================
-    # 21. CREATE EXPORT OPTIONS
+    # 21. CREATE EXPORT OPTIONS (INCLUDING dSYM UPLOAD)
     # ============================================================
 
     - name: Create Export Options
@@ -548,6 +538,10 @@ jobs:
           <string>manual</string>
           <key>signingCertificate</key>
           <string>Apple Distribution</string>
+          <key>uploadSymbols</key>
+          <true/>
+          <key>uploadBitcode</key>
+          <false/>
           <key>provisioningProfiles</key>
           <dict>
             <key>${BUNDLE_ID}</key>
@@ -620,26 +614,21 @@ jobs:
 
         echo "Processing App Store Connect Private Key..."
         
-        # Check if the key is base64 encoded by attempting to decode it quietly
         if echo "$KEY_CONTENT" | base64 --decode >/dev/null 2>&1; then
           echo "Base64 encoded key detected. Decoding to .p8 file..."
           echo "$KEY_CONTENT" | base64 --decode > "$KEY_FILE"
         else
           echo "Plain text key detected. Saving directly to .p8 file..."
-          # Using printf ensures newlines are strictly preserved
           printf "%s\n" "$KEY_CONTENT" > "$KEY_FILE"
         fi
 
-        # Apple's tools require strict permissions on the key file
         chmod 600 "$KEY_FILE"
 
-        # Sanity check: Ensure the file actually has content
         if [ ! -s "$KEY_FILE" ]; then
           echo "ERROR: AuthKey file is empty. Please verify your GitHub Secret contains the key."
           exit 1
         fi
 
-        # Locate the compiled app package
         IPA_PATH=$(find ios/App/output -name "*.ipa" -print -quit)
 
         if [ -z "$IPA_PATH" ]; then
