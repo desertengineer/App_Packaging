@@ -45,11 +45,6 @@ let dragOffsetX = 0, dragOffsetY = 0, hoverGridX = -1, hoverGridY = -1, boardCel
 
 let musicVol = 0.5; let sfxVol = 0.8;
 
-/**
- * EnBlocks / Magic Block Blitz 2026 - Main JavaScript Application
- * Compatible with Capacitor WKWebView without bundler module errors.
- */
-
 // Safe helper to obtain Capacitor AdMob Plugin instance in Vanilla JS
 const getAdMob = () => {
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) {
@@ -114,6 +109,9 @@ async function initEnBlocksMonetization() {
         });
         isAdMobInitialized = true;
         console.log('AdMob SDK initialized successfully.');
+
+        // Attach listeners for auto-reloading ads
+        attachAdEventListeners();
 
         // Preload initial ads
         preloadInterstitialAd();
@@ -258,27 +256,25 @@ document.addEventListener('DOMContentLoaded', () => {
 /**
  * Internal Event Listeners & Auto-Reload Loops
  */
-function attachAdEventListeners() {
+async function attachAdEventListeners() {
+    const AdMob = getAdMob();
+    if (!AdMob) return;
+
     // Interstitial Listeners
-    AdMob.addListener('onInterstitialAdLoaded', () => { isInterstitialLoaded = true; });
-    AdMob.addListener('onInterstitialAdDismissed', () => {
+    await AdMob.addListener('onInterstitialAdLoaded', () => { isInterstitialLoaded = true; });
+    await AdMob.addListener('onInterstitialAdDismissed', () => {
         isInterstitialLoaded = false;
-        preloadInterstitial();
+        preloadInterstitialAd();
     });
 
     // Rewarded Video Listeners
-    AdMob.addListener(RewardAdPluginEvents.Loaded, () => { isRewardedLoaded = true; });
-    AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+    await AdMob.addListener(RewardAdPluginEvents.Loaded, () => { isRewardedLoaded = true; });
+    await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
         isRewardedLoaded = false;
         preloadRewardedAd();
     });
 }
 
-
-// Execute on app startup (e.g., deviceready or DOMContentLoaded)
-document.addEventListener('DOMContentLoaded', () => {
-    initializeAdMob();
-});
 // ==========================================
 // Global Click Effect (Ripple)
 // ==========================================
