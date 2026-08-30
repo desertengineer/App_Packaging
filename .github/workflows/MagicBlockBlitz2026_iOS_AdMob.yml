@@ -155,7 +155,27 @@ jobs:
 
         echo "=== capacitor.config.json ==="
         cat capacitor.config.json
-
+    
+    # ============================================================
+    # 7.5. PATCH ADMOB PLUGIN SWIFT ERRORS
+    # ============================================================
+    - name: Patch AdMob Plugin Swift Errors
+      working-directory: ${{ env.TARGET_DIR }}
+      shell: bash
+      run: |
+        set -e
+        FILE="node_modules/@capacitor-community/admob/ios/Sources/AdMobPlugin/Consent/ConsentExecutor.swift"
+        
+        echo "Patching UMP SDK syntax for Swift compatibility..."
+        # Fix incorrect argument label 'completionHandler' to 'with'
+        sed -i '' 's/completionHandler:/with:/g' "$FILE"
+        
+        # Fix 'UMPConsentInformation.sharedInstance' to 'ConsentInformation.shared'
+        sed -i '' 's/UMPConsentInformation.sharedInstance/ConsentInformation.shared/g' "$FILE"
+        
+        # Fix 'UMPConsentStatus' to 'ConsentStatus'
+        sed -i '' 's/UMPConsentStatus/ConsentStatus/g' "$FILE"
+        
     # ============================================================
     # 8. CREATE / SYNC IOS PLATFORM
     # ============================================================
