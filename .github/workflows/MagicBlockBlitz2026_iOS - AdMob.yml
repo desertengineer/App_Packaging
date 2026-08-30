@@ -344,34 +344,42 @@ jobs:
       run: |
         set -e
         echo "Injecting signing and debug symbol build settings into Podfile..."
-        python3 -c "
-        with open('Podfile', 'r') as f:
-            lines = f.readlines()
 
-        injection = '''
-        post_install do |installer|
+        # Define the new post_install block
+        NEW_POST_INSTALL='post_install do |installer|
           installer.pods_project.targets.each do |target|
             target.build_configurations.each do |config|
-              config.build_settings['DEVELOPMENT_TEAM'] = ENV['APPLE_TEAM_ID']
-              config.build_settings['CODE_SIGN_STYLE'] = 'Manual'
-              config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ENV['PROFILE_UUID']
-              config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
-              config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
+              config.build_settings["DEVELOPMENT_TEAM"] = ENV["APPLE_TEAM_ID"]
+              config.build_settings["CODE_SIGN_STYLE"] = "Manual"
+              config.build_settings["PROVISIONING_PROFILE_SPECIFIER"] = ENV["PROFILE_UUID"]
+              config.build_settings["DEBUG_INFORMATION_FORMAT"] = "dwarf-with-dsym"
+              config.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
             end
           end
-        end
-        '''
+        end'
 
-        for i, line in enumerate(lines):
-            if 'post_install do |installer|' in line:
-                lines.insert(i + 1, injection)
-                break
-        else:
-            lines.append('\npost_install do |installer|\n' + injection + 'end\n')
+        # Use awk to replace the existing post_install block or add it if missing
+        awk -v new_post_install="$NEW_POST_INSTALL" '
+        BEGIN { in_post_install = 0; post_install_start = 0; post_install_end = 0; }
+        /post_install do \|installer\|/ { in_post_install = 1; post_install_start = NR; next; }
+        in_post_install && /^  end$/ { post_install_end = NR; in_post_install = 0; next; }
+        in_post_install { next; }
+        post_install_end > 0 {
+          if (NR == post_install_start) {
+            print new_post_install;
+            next;
+          }
+        }
+        { print; }
+        END {
+          if (post_install_start == 0) {
+            print "";
+            print new_post_install;
+          }
+        }' Podfile > Podfile.tmp && mv Podfile.tmp Podfile
 
-        with open('Podfile', 'w') as f:
-            f.writelines(lines)
-        "
+        echo "Updated Podfile:"
+        cat Podfile
 
         pod install --repo-update
 
