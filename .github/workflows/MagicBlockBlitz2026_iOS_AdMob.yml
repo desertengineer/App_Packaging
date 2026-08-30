@@ -16,7 +16,7 @@ jobs:
   build-ios:
     runs-on: macos-latest
     environment: MagicBlockBlitz-Environment
-
+    
     steps:
     # ============================================================
     # 1. CHECKOUT
@@ -155,7 +155,7 @@ jobs:
 
         echo "=== capacitor.config.json ==="
         cat capacitor.config.json
-    
+
     # ============================================================
     # 7.5. PATCH ADMOB PLUGIN SWIFT ERRORS
     # ============================================================
@@ -372,7 +372,7 @@ jobs:
         pod install --repo-update
 
     # ============================================================
-    # 13. SECURE PODS PROJECT CONFIGURATION (NEW)
+    # 13. SECURE PODS PROJECT CONFIGURATION
     # ============================================================
     - name: Fix Pods Code Signing and Deployment Target
       working-directory: ${{ env.TARGET_DIR }}/ios/App
@@ -476,6 +476,9 @@ jobs:
             config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ENV['PROFILE_UUID']
             config.build_settings['CODE_SIGN_STYLE'] = 'Manual'
             config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution'
+            
+            # 🔥 FIX: Disable sandboxing for the main App to allow CocoaPods scripts to run
+            config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
           end
         end
         project.save
@@ -591,5 +594,3 @@ jobs:
         issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID || vars.APP_STORE_CONNECT_ISSUER_ID || '2e4974f6-27d6-476e-9322-0a79cff7bf00' }}
         api-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID || vars.APP_STORE_CONNECT_KEY_ID || 'C6HLRTWSC2' }}
         api-private-key: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT || secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-
-    
