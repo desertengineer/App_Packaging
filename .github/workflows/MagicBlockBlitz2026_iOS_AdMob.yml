@@ -1,4 +1,4 @@
-name: Build EnBlocks - iOS (AdMob)
+name: EnBlocks - iOS (AdMob)
 
 on:
   workflow_dispatch:
