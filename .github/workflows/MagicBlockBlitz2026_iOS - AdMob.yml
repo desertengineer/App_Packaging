@@ -335,7 +335,7 @@ jobs:
 
         echo "Successfully updated Version to 1.0.2 and Build Number to ${{ github.run_number }}"
 
-    # ============================================================
+    # ============================================================ 
     # 12. CONFIGURE PODFILE & INSTALL COCOAPODS
     # ============================================================
     - name: Configure Podfile and Install CocoaPods
@@ -343,22 +343,21 @@ jobs:
       shell: bash
       run: |
         set -e
-        echo "Injecting signing and debug symbol build settings into Podfile..."
+        echo "Configuring Podfile to disable provisioning profiles on Pod targets..."
 
-        # Define the new post_install block
         NEW_POST_INSTALL='post_install do |installer|
           installer.pods_project.targets.each do |target|
             target.build_configurations.each do |config|
               config.build_settings["DEVELOPMENT_TEAM"] = ENV["APPLE_TEAM_ID"]
-              config.build_settings["CODE_SIGN_STYLE"] = "Manual"
-              config.build_settings["PROVISIONING_PROFILE_SPECIFIER"] = ENV["PROFILE_UUID"]
+              config.build_settings["CODE_SIGN_STYLE"] = "Automatic"
+              config.build_settings["PROVISIONING_PROFILE_SPECIFIER"] = ""
+              config.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
               config.build_settings["DEBUG_INFORMATION_FORMAT"] = "dwarf-with-dsym"
               config.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
             end
           end
         end'
 
-        # Use awk to replace the existing post_install block or add it if missing
         awk -v new_post_install="$NEW_POST_INSTALL" '
         BEGIN { in_post_install = 0; post_install_start = 0; post_install_end = 0; }
         /post_install do \|installer\|/ { in_post_install = 1; post_install_start = NR; next; }
@@ -438,7 +437,7 @@ jobs:
         /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" App/Info.plist || \
         /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" App/Info.plist
 
-    # ============================================================
+    # ============================================================ 
     # 19. BUILD AND ARCHIVE WITH dSYM DEBUG SYMBOLS
     # ============================================================
     - name: Build and Archive iOS App
@@ -448,11 +447,15 @@ jobs:
       shell: bash
       run: |
         set -o pipefail
-        echo "Starting Xcode archive with team-level project signing..."
-        echo "APPLE_TEAM_ID: $APPLE_TEAM_ID"
-        echo "PROFILE_UUID: $PROFILE_UUID"
-        echo "BUNDLE_ID: $BUNDLE_ID"
+        echo "Setting target-level signing on main App target..."
+        
+        # Inject team and provisioning profile into main App project target only
+        PBXPROJ="App.xcodeproj/project.pbxproj"
+        sed -i '' "s/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = $APPLE_TEAM_ID;/g" "$PBXPROJ"
+        sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";/g" "$PBXPROJ"
+        sed -i '' 's/CODE_SIGN_STYLE = .*/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ"
 
+        echo "Starting Xcode archive..."
         xcodebuild archive \
           -workspace App.xcworkspace \
           -scheme "$XCODE_SCHEME" \
@@ -463,7 +466,6 @@ jobs:
           DEVELOPMENT_TEAM=$APPLE_TEAM_ID \
           CODE_SIGN_STYLE=Manual \
           CODE_SIGN_IDENTITY="Apple Distribution" \
-          PROVISIONING_PROFILE_SPECIFIER=$PROFILE_UUID \
           | tee "$RUNNER_TEMP/xcodebuild.log"
 
     # ============================================================
