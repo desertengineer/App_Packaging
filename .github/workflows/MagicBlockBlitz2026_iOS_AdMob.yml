@@ -325,15 +325,22 @@ jobs:
         echo "Bumping version numbers for App Store Connect..."
         PLIST="ios/App/App/Info.plist"
 
-        if ! /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.2" "$PLIST"; then
-          /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0.2" "$PLIST"
+        # Extract dynamic version from package.json or default to 1.0.2
+        if [ -f "package.json" ]; then
+          APP_VERSION=$(node -p "require('./package.json').version")
+        else
+          APP_VERSION="1.0.2"
+        fi
+
+        if ! /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$PLIST"; then
+          /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $APP_VERSION" "$PLIST"
         fi
 
         if ! /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$PLIST"; then
           /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${{ github.run_number }}" "$PLIST"
         fi
 
-        echo "Successfully updated Version to 1.0.2 and Build Number to ${{ github.run_number }}"
+        echo "Successfully updated Version to $APP_VERSION and Build Number to ${{ github.run_number }}"
 
     # ============================================================ 
     # 12. CONFIGURE PODFILE & INSTALL COCOAPODS
@@ -420,7 +427,8 @@ jobs:
       shell: bash
       run: |
         set -e
-        if grep -n 'PROVISIONING_PROFILE_SPECIFIER' Pods/Pods.xcodeproj/project.pbxproj; then
+        # Ensure we only fail if a real profile is specified, not an empty string
+        if grep -q 'PROVISIONING_PROFILE_SPECIFIER = "[^"]' Pods/Pods.xcodeproj/project.pbxproj; then
           echo "ERROR: Pods project still contains a provisioning profile."
           exit 1
         fi
@@ -570,45 +578,9 @@ jobs:
     # ============================================================
     - name: Upload to TestFlight / App Store Connect
       if: success()
-      working-directory: ${{ env.TARGET_DIR }}
-      env:
-        KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID || vars.APP_STORE_CONNECT_KEY_ID || 'C6HLRTWSC2' }}
-        ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID || vars.APP_STORE_CONNECT_ISSUER_ID || '2e4974f6-27d6-476e-9322-0a79cff7bf00' }}
-        KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT || secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-        BUILD_NOTES: ${{ inputs.build_notes }}
-      shell: bash
-      run: |
-        set -e
-        API_KEYS_DIR="$HOME/.appstoreconnect/private_keys"
-        mkdir -p "$API_KEYS_DIR"
-        KEY_FILE="$API_KEYS_DIR/AuthKey_${KEY_ID}.p8"
-
-        echo "Processing App Store Connect Private Key..."
-        if echo "$KEY_CONTENT" | base64 --decode >/dev/null 2>&1; then
-          echo "Base64 encoded key detected. Decoding to .p8 file..."
-          echo "$KEY_CONTENT" | base64 --decode > "$KEY_FILE"
-        else
-          echo "Plain text key detected. Saving directly to .p8 file..."
-          printf "%s\n" "$KEY_CONTENT" > "$KEY_FILE"
-        fi
-
-        chmod 600 "$KEY_FILE"
-
-        if [ ! -s "$KEY_FILE" ]; then
-          echo "ERROR: AuthKey file is empty. Please verify your GitHub Secret contains the key."
-          exit 1
-        fi
-
-        IPA_PATH=$(find ios/App/output -name "*.ipa" -print -quit)
-        if [ -z "$IPA_PATH" ]; then
-          echo "ERROR: No IPA file found to upload."
-          exit 1
-        fi
-
-        echo "Uploading $IPA_PATH to App Store Connect..."
-        xcrun altool \
-          --upload-app \
-          -t ios \
-          -f "$IPA_PATH" \
-          --apiKey "$KEY_ID" \
-          --apiIssuer "$ISSUER_ID"
+      uses: apple-actions/upload-testflight-build@v1
+      with:
+        app-path: ${{ env.TARGET_DIR }}/ios/App/output/App.ipa
+        issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID || vars.APP_STORE_CONNECT_ISSUER_ID || '2e4974f6-27d6-476e-9322-0a79cff7bf00' }}
+        api-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID || vars.APP_STORE_CONNECT_KEY_ID || 'C6HLRTWSC2' }}
+        api-private-key: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT || secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
