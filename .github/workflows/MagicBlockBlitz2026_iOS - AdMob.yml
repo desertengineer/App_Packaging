@@ -470,7 +470,7 @@ jobs:
         ruby configure_signing.rb
         echo "Successfully updated App.xcodeproj signing attributes."
 
-        echo "Starting Xcode archive..."
+        echo "Starting clean Xcode archive without CLI overrides..."
         xcodebuild archive \
           -workspace App.xcworkspace \
           -scheme "$XCODE_SCHEME" \
