@@ -437,8 +437,8 @@ jobs:
         /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" App/Info.plist || \
         /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" App/Info.plist
 
-    # ============================================================ 
-    # 19. BUILD AND ARCHIVE WITH dSYM DEBUG SYMBOLS
+    # ============================================================
+    # 19. CONFIGURE TARGET SIGNING AND ARCHIVE IOS APP
     # ============================================================
     - name: Build and Archive iOS App
       working-directory: ${{ env.TARGET_DIR }}/ios/App
@@ -447,13 +447,28 @@ jobs:
       shell: bash
       run: |
         set -o pipefail
-        echo "Setting target-level signing on main App target..."
         
-        # Inject team and provisioning profile into main App project target only
-        PBXPROJ="App.xcodeproj/project.pbxproj"
-        sed -i '' "s/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = $APPLE_TEAM_ID;/g" "$PBXPROJ"
-        sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";/g" "$PBXPROJ"
-        sed -i '' 's/CODE_SIGN_STYLE = .*/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ"
+        echo "Injecting manual signing configuration strictly into the App target..."
+        cat > configure_signing.rb <<'EOF'
+        require 'xcodeproj'
+        project_path = 'App.xcodeproj'
+        project = Xcodeproj::Project.open(project_path)
+        
+        project.targets.each do |target|
+          if target.name == 'App'
+            target.build_configurations.each do |config|
+              config.build_settings['DEVELOPMENT_TEAM'] = ENV['APPLE_TEAM_ID']
+              config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ENV['PROFILE_UUID']
+              config.build_settings['CODE_SIGN_STYLE'] = 'Manual'
+              config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution'
+            end
+          end
+        end
+        project.save
+        EOF
+        
+        ruby configure_signing.rb
+        echo "Successfully updated App.xcodeproj signing attributes."
 
         echo "Starting Xcode archive..."
         xcodebuild archive \
@@ -463,9 +478,6 @@ jobs:
           -destination "generic/platform=iOS" \
           -archivePath "$RUNNER_TEMP/App.xcarchive" \
           -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-          DEVELOPMENT_TEAM=$APPLE_TEAM_ID \
-          CODE_SIGN_STYLE=Manual \
-          CODE_SIGN_IDENTITY="Apple Distribution" \
           | tee "$RUNNER_TEMP/xcodebuild.log"
 
     # ============================================================
