@@ -325,7 +325,6 @@ jobs:
         echo "Bumping version numbers for App Store Connect..."
         PLIST="ios/App/App/Info.plist"
 
-        # Extract dynamic version from package.json or default to 1.0.2
         if [ -f "package.json" ]; then
           APP_VERSION=$(node -p "require('./package.json').version")
         else
@@ -340,7 +339,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${{ github.run_number }}" "$PLIST"
         fi
 
-        echo "Successfully updated Version to $APP_VERSION and Build Number to ${{ github.run_number }}"
+        echo "Successfully updated Version to $APP_VERSION and Build Number to${{ github.run_number }}"
 
     # ============================================================ 
     # 12. CONFIGURE PODFILE & INSTALL COCOAPODS
@@ -350,17 +349,17 @@ jobs:
       shell: bash
       run: |
         set -e
-        echo "Configuring Podfile to disable provisioning profiles on Pod targets..."
+        echo "Configuring Podfile to securely disable code signing for Pods and enforce iOS 15..."
 
         NEW_POST_INSTALL='post_install do |installer|
           installer.pods_project.targets.each do |target|
             target.build_configurations.each do |config|
-              config.build_settings["DEVELOPMENT_TEAM"] = ENV["APPLE_TEAM_ID"]
-              config.build_settings["CODE_SIGN_STYLE"] = "Automatic"
-              config.build_settings["PROVISIONING_PROFILE_SPECIFIER"] = ""
               config.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
-              config.build_settings["DEBUG_INFORMATION_FORMAT"] = "dwarf-with-dsym"
+              config.build_settings["CODE_SIGNING_REQUIRED"] = "NO"
+              config.build_settings["CODE_SIGN_IDENTITY"] = ""
+              config.build_settings["EXPANDED_CODE_SIGN_IDENTITY"] = ""
               config.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
+              config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
             end
           end
         end'
@@ -427,7 +426,6 @@ jobs:
       shell: bash
       run: |
         set -e
-        # Ensure we only fail if a real profile is specified, not an empty string
         if grep -q 'PROVISIONING_PROFILE_SPECIFIER = "[^"]' Pods/Pods.xcodeproj/project.pbxproj; then
           echo "ERROR: Pods project still contains a provisioning profile."
           exit 1
@@ -478,7 +476,7 @@ jobs:
         ruby configure_signing.rb
         echo "Successfully updated App.xcodeproj signing attributes."
 
-        echo "Starting clean Xcode archive without CLI overrides..."
+        echo "Starting clean Xcode archive with optimizations..."
         xcodebuild archive \
           -workspace App.xcworkspace \
           -scheme "$XCODE_SCHEME" \
@@ -486,6 +484,7 @@ jobs:
           -destination "generic/platform=iOS" \
           -archivePath "$RUNNER_TEMP/App.xcarchive" \
           -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+          COMPILER_INDEX_STORE_ENABLE=NO \
           | tee "$RUNNER_TEMP/xcodebuild.log"
 
     # ============================================================
