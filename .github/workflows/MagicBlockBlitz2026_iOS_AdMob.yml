@@ -350,7 +350,7 @@ jobs:
         set -e
         echo "Configuring Podfile with ARM64e fix and CocoaPods settings..."
 
-        # Create Ruby script in a file to avoid heredoc issues
+        # Create Ruby script to avoid heredoc issues
         cat > /tmp/fix_podfile.rb << 'RUBY_SCRIPT'
         podfile_path = "Podfile"
         content = File.read(podfile_path)
@@ -358,46 +358,46 @@ jobs:
         # Remove existing post_install block
         content = content.sub(/^post_install\s+do\s+\|installer\|.*?^end\s*$/m, "")
 
-        # Define the new post_install hook
-        post_install = <<~RUBY
-          post_install do |installer|
-            begin
-              assertDeploymentTarget(installer)
-            rescue StandardError => err
-              puts "Warning: assertDeploymentTarget - #{err}"
-            end
+        # Define the new post_install hook as a simple string
+        post_install = %{
+        post_install do |installer|
+          begin
+            assertDeploymentTarget(installer)
+          rescue StandardError
+            puts "Warning: assertDeploymentTarget skipped"
+          end
 
-            installer.pods_project.targets.each do |target|
-              target.build_configurations.each do |config|
-                # Exclude ARM64e architecture
-                config.build_settings["EXCLUDED_ARCHS[sdk=*]"] = "arm64e"
-                config.build_settings["EXCLUDED_ARCHS[sdk=iphonesimulator*]"] = "arm64e i386"
-                
-                # Set deployment target
-                config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
-                
-                # Code signing settings
-                config.build_settings["DEVELOPMENT_TEAM"] = ENV["APPLE_TEAM_ID"]
-                config.build_settings["CODE_SIGN_STYLE"] = "Automatic"
-                config.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
-                config.build_settings["CODE_SIGNING_REQUIRED"] = "NO"
-                
-                # Build settings
-                config.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
-                config.build_settings["DEBUG_INFORMATION_FORMAT"] = "dwarf-with-dsym"
-                config.build_settings["SDKROOT"] = "iphoneos"
-                config.build_settings["SUPPORTED_PLATFORMS"] = "iphoneos iphonesimulator"
-              end
+          installer.pods_project.targets.each do |target|
+            target.build_configurations.each do |config|
+              # Exclude ARM64e architecture
+              config.build_settings["EXCLUDED_ARCHS[sdk=*]"] = "arm64e"
+              config.build_settings["EXCLUDED_ARCHS[sdk=iphonesimulator*]"] = "arm64e i386"
               
-              # Mark script phases to always run
-              target.build_phases.each do |phase|
-                if phase.respond_to?(:always_out_of_date=)
-                  phase.always_out_of_date = "YES"
-                end
+              # Set deployment target
+              config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
+              
+              # Code signing settings
+              config.build_settings["DEVELOPMENT_TEAM"] = ENV["APPLE_TEAM_ID"]
+              config.build_settings["CODE_SIGN_STYLE"] = "Automatic"
+              config.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
+              config.build_settings["CODE_SIGNING_REQUIRED"] = "NO"
+              
+              # Build settings
+              config.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
+              config.build_settings["DEBUG_INFORMATION_FORMAT"] = "dwarf-with-dsym"
+              config.build_settings["SDKROOT"] = "iphoneos"
+              config.build_settings["SUPPORTED_PLATFORMS"] = "iphoneos iphonesimulator"
+            end
+            
+            # Mark script phases to always run
+            target.build_phases.each do |phase|
+              if phase.respond_to?(:always_out_of_date=)
+                phase.always_out_of_date = "YES"
               end
             end
           end
-        RUBY
+        end
+        }
 
         updated = content.strip + "\n\n" + post_install
         File.write(podfile_path, updated)
@@ -491,7 +491,7 @@ jobs:
         
         echo "Injecting manual signing configuration into App.xcodeproj..."
         
-        # Create Ruby script to avoid heredoc issues
+        # Create Ruby script to configure Xcode
         cat > /tmp/configure_xcode.rb << 'RUBY_SCRIPT'
         require "xcodeproj"
         project = Xcodeproj::Project.open("App.xcodeproj")
@@ -523,7 +523,9 @@ jobs:
 
           # Mark script phases to always run
           target.shell_script_build_phases.each do |phase|
-            phase.always_out_of_date = "YES" if phase.respond_to?(:always_out_of_date=)
+            if phase.respond_to?(:always_out_of_date=)
+              phase.always_out_of_date = "YES"
+            end
           end
         end
 
