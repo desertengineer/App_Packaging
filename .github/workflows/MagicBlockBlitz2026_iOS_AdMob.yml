@@ -358,7 +358,8 @@ jobs:
           content = content.sub(/^post_install\s+do\s+\|installer\|.*?^end\s*$/m, "")
           
           # Define the new post_install hook with STRING values (not booleans)
-          post_install = %{
+          # Define the new post_install hook with STRING values (not booleans)
+          post_install = %q{
           post_install do |installer|
             begin
               assertDeploymentTarget(installer)
