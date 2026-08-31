@@ -203,30 +203,60 @@ jobs:
         fi
 
     # ============================================================
-    # 8.6. CONFIGURE ADMOB & ATT IN INFO.PLIST
+    # 8.6. FIX ARM64E ARCHITECTURE ISSUES
     # ============================================================
-    - name: Inject AdMob Credentials & ATT into Info.plist
-      working-directory: ${{ env.TARGET_DIR }}
-      env:
-        ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
+    - name: Fix ARM64e Architecture Incompatibility
+      working-directory: ${{ env.TARGET_DIR }}/ios/App
       shell: bash
       run: |
         set -e
-        echo "Injecting unified ADMOB_APP_ID into Info.plist..."
-        PLIST="ios/App/App/Info.plist"
+        echo "Fixing arm64e architecture issues in Podfile..."
+        ruby -e '
+          podfile = File.read("Podfile")
+          
+          # Remove old post_install if exists
+          cleaned = podfile.gsub(/post_install\s+do\s+\|installer\|[\s\S]*?end\b/m, "")
+          
+          post_hook = <<~RUBY
+            post_install do |installer|
+              begin
+                assertDeploymentTarget(installer)
+              rescue => e
+                puts "assertDeploymentTarget warning ignored: #{e}"
+              end
 
-        /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$ADMOB_APP_ID'" "$PLIST" || \
-        /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '$ADMOB_APP_ID'" "$PLIST"
+              installer.pods_project.targets.each do |target|
+                target.build_configurations.each do |config|
+                  # CRITICAL: Exclude arm64e architecture
+                  config.build_settings["EXCLUDED_ARCHS[sdk=*]"] = "arm64e"
+                  config.build_settings["EXCLUDED_ARCHS[sdk=iphonesimulator*]"] = "arm64e i386"
+                  
+                  config.build_settings["DEVELOPMENT_TEAM"] = ENV["APPLE_TEAM_ID"]
+                  config.build_settings["CODE_SIGN_STYLE"] = "Automatic"
+                  config.build_settings["PROVISIONING_PROFILE_SPECIFIER"] = ""
+                  config.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
+                  config.build_settings["CODE_SIGNING_REQUIRED"] = "NO"
+                  config.build_settings["DEBUG_INFORMATION_FORMAT"] = "dwarf-with-dsym"
+                  config.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
+                  config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
+                  config.build_settings["SDKROOT"] = "iphoneos"
+                  config.build_settings["SUPPORTED_PLATFORMS"] = "iphoneos iphonesimulator"
+                  
+                  # Ensure only arm64 is supported
+                  config.build_settings["ARCHS"] = "arm64"
+                end
+                target.build_phases.each do |phase|
+                  if phase.respond_to?(:always_out_of_date=)
+                    phase.always_out_of_date = "1"
+                  end
+                end
+              end
+            end
+          RUBY
 
-        ATT_MSG="This identifier will be used to deliver personalized ads to you."
-        /usr/libexec/PlistBuddy -c "Add :NSUserTrackingUsageDescription string '$ATT_MSG'" "$PLIST" || \
-        /usr/libexec/PlistBuddy -c "Set :NSUserTrackingUsageDescription '$ATT_MSG'" "$PLIST"
-
-        /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems array" "$PLIST" || true
-        /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0 dict" "$PLIST" || true
-        /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0:SKAdNetworkIdentifier string 'cstr6suwng.skadnetwork'" "$PLIST" || true
-
-        echo "✅ AdMob Info.plist configuration completed."
+          File.write("Podfile", cleaned.strip + "\n\n" + post_hook)
+        '
+        echo "✅ Podfile fixed for arm64e compatibility."
 
     # ============================================================
     # 9. GENERATE IOS APP ASSETS
@@ -346,49 +376,14 @@ jobs:
       shell: bash
       run: |
         set -e
-        echo "Configuring Podfile using inline Ruby..."
+        echo "Installing CocoaPods with fixed configuration..."
+        
+        # Remove old Pods and try fresh install
+        rm -rf Pods Pods.lock 2>/dev/null || true
+        
+        pod install --repo-update --no-integrated-swift-build-cache
 
-        ruby -e '
-          podfile = File.read("Podfile")
-          cleaned = podfile.gsub(/post_install\s+do\s+\|installer\|[\s\S]*?end\b/m, "")
-          
-          post_hook = <<~RUBY
-            post_install do |installer|
-              begin
-                assertDeploymentTarget(installer)
-              rescue => e
-                puts "assertDeploymentTarget warning ignored: \#{e}"
-              end
-
-              installer.pods_project.targets.each do |target|
-                target.build_configurations.each do |config|
-                  config.build_settings["DEVELOPMENT_TEAM"] = ENV["APPLE_TEAM_ID"]
-                  config.build_settings["CODE_SIGN_STYLE"] = "Automatic"
-                  config.build_settings["PROVISIONING_PROFILE_SPECIFIER"] = ""
-                  config.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
-                  config.build_settings["CODE_SIGNING_REQUIRED"] = "NO"
-                  config.build_settings["DEBUG_INFORMATION_FORMAT"] = "dwarf-with-dsym"
-                  config.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
-                  config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
-                  config.build_settings["SDKROOT"] = "iphoneos"
-                  config.build_settings["SUPPORTED_PLATFORMS"] = "iphoneos iphonesimulator"
-                end
-                target.build_phases.each do |phase|
-                  if phase.respond_to?(:always_out_of_date=)
-                    phase.always_out_of_date = "1"
-                  end
-                end
-              end
-            end
-          RUBY
-
-          File.write("Podfile", cleaned.strip + "\n\n" + post_hook)
-        '
-
-        echo "Updated Podfile:"
-        cat Podfile
-
-        pod install --repo-update
+        echo "✅ CocoaPods installed successfully"
 
     # ============================================================
     # 14. CREATE PRIVACY MANIFEST
@@ -471,16 +466,18 @@ jobs:
       run: |
         set -o pipefail
         
-        echo "Injecting manual signing configuration strictly into App.xcodeproj..."
+        echo "Injecting manual signing configuration..."
         ruby -e '
           require "xcodeproj"
           project = Xcodeproj::Project.open("App.xcodeproj")
           
           project.build_configurations.each do |config|
+            config.build_settings["EXCLUDED_ARCHS[sdk=*]"] = "arm64e"
             config.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
             config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
             config.build_settings["SDKROOT"] = "iphoneos"
             config.build_settings["SUPPORTED_PLATFORMS"] = "iphoneos iphonesimulator"
+            config.build_settings["ARCHS"] = "arm64"
           end
 
           project.targets.each do |target|
@@ -495,6 +492,8 @@ jobs:
               config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
               config.build_settings["SDKROOT"] = "iphoneos"
               config.build_settings["SUPPORTED_PLATFORMS"] = "iphoneos iphonesimulator"
+              config.build_settings["EXCLUDED_ARCHS[sdk=*]"] = "arm64e"
+              config.build_settings["ARCHS"] = "arm64"
             end
 
             target.shell_script_build_phases.each do |phase|
@@ -503,7 +502,7 @@ jobs:
           end
           project.save
         '
-        echo "Successfully updated App.xcodeproj signing attributes and build phases."
+        echo "✅ Updated App.xcodeproj"
 
         echo "Starting clean Xcode archive..."
         xcodebuild archive \
@@ -514,6 +513,8 @@ jobs:
           -archivePath "$RUNNER_TEMP/App.xcarchive" \
           -derivedDataPath "$RUNNER_TEMP/DerivedData" \
           COMPILER_INDEX_STORE_ENABLE=NO \
+          EXCLUDED_ARCHS=arm64e \
+          ARCHS=arm64 \
           | tee "$RUNNER_TEMP/xcodebuild.log"
 
     # ============================================================
