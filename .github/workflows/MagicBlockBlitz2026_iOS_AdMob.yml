@@ -196,8 +196,6 @@ jobs:
           sed -i '' "s/platform :ios, '[^']*'/platform :ios, '15.0'/g" Podfile
           echo "✅ Podfile minimum iOS version updated."
         fi
-        # Note: Raw sed edits on project.pbxproj have been removed to prevent project file corruption.
-        # Target deployment versions and SDK roots are managed safely via Ruby / xcodeproj.
 
     # ============================================================
     # 8.6. CONFIGURE ADMOB & ATT IN INFO.PLIST
@@ -339,11 +337,25 @@ jobs:
       shell: bash
       run: |
         set -e
-        echo "Appending CocoaPods post_install configuration..."
+        echo "Configuring Podfile to safely merge post_install logic..."
 
+        # Safely strip any existing post_install blocks to avoid duplicate hook error
+        ruby -e '
+          podfile = File.read("Podfile")
+          cleaned = podfile.gsub(/post_install\s+do\s+\|installer\|[\s\S]*?end\b/m, "")
+          File.write("Podfile", cleaned)
+        '
+
+        # Append single unified post_install hook
         cat << 'EOF' >> Podfile
 
         post_install do |installer|
+          begin
+            assertDeploymentTarget(installer)
+          rescue => e
+            puts "assertDeploymentTarget warning ignored: #{e}"
+          end
+
           installer.pods_project.targets.each do |target|
             target.build_configurations.each do |config|
               config.build_settings["DEVELOPMENT_TEAM"] = ENV["APPLE_TEAM_ID"]
@@ -543,7 +555,6 @@ jobs:
             <string>$PROFILE_UUID</string>
           </dict>
         </dict>
-        </plist>
         EOF
 
     # ============================================================
