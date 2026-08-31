@@ -274,7 +274,11 @@ jobs:
           -f pkcs12 \
           -k "$KEYCHAIN_PATH"
 
-        security list-keychains -d user -s "$KEYCHAIN_PATH"
+        # CRITICAL: Grant the codesign tool access to the private key without requiring a UI prompt
+        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+        # Keep login.keychain in the search list so system roots are accessible during framework signing
+        security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
         security default-keychain -s "$KEYCHAIN_PATH"
 
     # ============================================================
