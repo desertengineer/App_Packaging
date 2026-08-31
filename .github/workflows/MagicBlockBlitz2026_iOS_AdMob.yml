@@ -203,60 +203,30 @@ jobs:
         fi
 
     # ============================================================
-    # 8.6. FIX ARM64E ARCHITECTURE ISSUES
+    # 8.6. CONFIGURE ADMOB & ATT IN INFO.PLIST
     # ============================================================
-    - name: Fix ARM64e Architecture Incompatibility
-      working-directory: ${{ env.TARGET_DIR }}/ios/App
+    - name: Inject AdMob Credentials & ATT into Info.plist
+      working-directory: ${{ env.TARGET_DIR }}
+      env:
+        ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
       shell: bash
       run: |
         set -e
-        echo "Fixing arm64e architecture issues in Podfile..."
-        ruby -e '
-          podfile = File.read("Podfile")
-          
-          # Remove old post_install if exists
-          cleaned = podfile.gsub(/post_install\s+do\s+\|installer\|[\s\S]*?end\b/m, "")
-          
-          post_hook = <<~RUBY
-            post_install do |installer|
-              begin
-                assertDeploymentTarget(installer)
-              rescue => e
-                puts "assertDeploymentTarget warning ignored: #{e}"
-              end
+        echo "Injecting unified ADMOB_APP_ID into Info.plist..."
+        PLIST="ios/App/App/Info.plist"
 
-              installer.pods_project.targets.each do |target|
-                target.build_configurations.each do |config|
-                  # CRITICAL: Exclude arm64e architecture
-                  config.build_settings["EXCLUDED_ARCHS[sdk=*]"] = "arm64e"
-                  config.build_settings["EXCLUDED_ARCHS[sdk=iphonesimulator*]"] = "arm64e i386"
-                  
-                  config.build_settings["DEVELOPMENT_TEAM"] = ENV["APPLE_TEAM_ID"]
-                  config.build_settings["CODE_SIGN_STYLE"] = "Automatic"
-                  config.build_settings["PROVISIONING_PROFILE_SPECIFIER"] = ""
-                  config.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
-                  config.build_settings["CODE_SIGNING_REQUIRED"] = "NO"
-                  config.build_settings["DEBUG_INFORMATION_FORMAT"] = "dwarf-with-dsym"
-                  config.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
-                  config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
-                  config.build_settings["SDKROOT"] = "iphoneos"
-                  config.build_settings["SUPPORTED_PLATFORMS"] = "iphoneos iphonesimulator"
-                  
-                  # Ensure only arm64 is supported
-                  config.build_settings["ARCHS"] = "arm64"
-                end
-                target.build_phases.each do |phase|
-                  if phase.respond_to?(:always_out_of_date=)
-                    phase.always_out_of_date = "1"
-                  end
-                end
-              end
-            end
-          RUBY
+        /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$ADMOB_APP_ID'" "$PLIST" || \
+        /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '$ADMOB_APP_ID'" "$PLIST"
 
-          File.write("Podfile", cleaned.strip + "\n\n" + post_hook)
-        '
-        echo "✅ Podfile fixed for arm64e compatibility."
+        ATT_MSG="This identifier will be used to deliver personalized ads to you."
+        /usr/libexec/PlistBuddy -c "Add :NSUserTrackingUsageDescription string '$ATT_MSG'" "$PLIST" || \
+        /usr/libexec/PlistBuddy -c "Set :NSUserTrackingUsageDescription '$ATT_MSG'" "$PLIST"
+
+        /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems array" "$PLIST" || true
+        /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0 dict" "$PLIST" || true
+        /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0:SKAdNetworkIdentifier string 'cstr6suwng.skadnetwork'" "$PLIST" || true
+
+        echo "✅ AdMob Info.plist configuration completed."
 
     # ============================================================
     # 9. GENERATE IOS APP ASSETS
@@ -373,17 +343,74 @@ jobs:
     # ============================================================
     - name: Configure Podfile and Install CocoaPods
       working-directory: ${{ env.TARGET_DIR }}/ios/App
+      env:
+        APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
       shell: bash
       run: |
         set -e
-        echo "Installing CocoaPods with fixed configuration..."
-        
-        # Remove old Pods and try fresh install
-        rm -rf Pods Pods.lock 2>/dev/null || true
-        
-        pod install --repo-update --no-integrated-swift-build-cache
+        echo "Configuring Podfile with ARM64e fix and CocoaPods settings..."
 
-        echo "✅ CocoaPods installed successfully"
+        cat > /tmp/podfile_update.rb << 'RUBY_SCRIPT'
+          podfile_content = File.read("Podfile")
+          
+          # Remove existing post_install block
+          cleaned = podfile_content.gsub(/post_install\s+do\s+\|installer\|\s*[\s\S]*?^\s*end\s*$/m, "")
+          
+          # Add new post_install with ARM64e exclusion
+          post_install_block = %{
+          post_install do |installer|
+            begin
+              assertDeploymentTarget(installer)
+            rescue => e
+              puts "assertDeploymentTarget warning: #{e}"
+            end
+
+            installer.pods_project.targets.each do |target|
+              target.build_configurations.each do |config|
+                # Exclude ARM64e architecture
+                config.build_settings["EXCLUDED_ARCHS[sdk=*]"] = "arm64e"
+                config.build_settings["EXCLUDED_ARCHS[sdk=iphonesimulator*]"] = "arm64e i386"
+                
+                # Set deployment target
+                config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
+                
+                # Code signing settings
+                config.build_settings["DEVELOPMENT_TEAM"] = "#{ENV["APPLE_TEAM_ID"]}"
+                config.build_settings["CODE_SIGN_STYLE"] = "Automatic"
+                config.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
+                config.build_settings["CODE_SIGNING_REQUIRED"] = "NO"
+                
+                # Build settings
+                config.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
+                config.build_settings["DEBUG_INFORMATION_FORMAT"] = "dwarf-with-dsym"
+                config.build_settings["SDKROOT"] = "iphoneos"
+                config.build_settings["SUPPORTED_PLATFORMS"] = "iphoneos iphonesimulator"
+              end
+              
+              # Mark script phases to always run
+              target.build_phases.each do |phase|
+                if phase.respond_to?(:always_out_of_date=)
+                  phase.always_out_of_date = true
+                end
+              end
+            end
+          end
+                    }
+                    
+                    updated_content = cleaned.strip + "\n\n" + post_install_block
+                    File.write("Podfile", updated_content)
+                    puts "✅ Podfile updated successfully"
+          RUBY_SCRIPT
+
+                  ruby /tmp/podfile_update.rb
+
+                  echo "Podfile content after update:"
+                  tail -50 Podfile
+
+                  echo ""
+                  echo "Running pod install..."
+                  rm -rf Pods Pods.lock 2>/dev/null || true
+                  pod install --repo-update
 
     # ============================================================
     # 14. CREATE PRIVACY MANIFEST
@@ -397,28 +424,21 @@ jobs:
         ruby -e '
           require "fileutils"
           FileUtils.mkdir_p("App")
-          content = <<~XML
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-              "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-                <key>NSPrivacyTracking</key>
-                <true/>
-                <key>NSPrivacyTrackingDomains</key>
-                <array>
-                    <string>google.com</string>
-                    <string>doubleclick.net</string>
-                </array>
-                <key>NSPrivacyCollectedDataTypes</key>
-                <array/>
-                <key>NSPrivacyAccessedAPITypes</key>
-                <array/>
-            </dict>
-            </plist>
-          XML
-          File.write("App/PrivacyInfo.xcprivacy", content)
-        '
+          content = %{<?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>NSPrivacyTracking</key>
+            <false/>
+            <key>NSPrivacyTrackingDomains</key>
+            <array>
+              <string>google.com</string>
+              <string>doubleclick.net</string>
+            </array>
+          </dict>
+          </plist>}
+                    File.write("App/PrivacyInfo.xcprivacy", content)
+                  '
 
     # ============================================================
     # 16. VERIFY THAT PODS DO NOT HAVE PROVISIONING PROFILES
@@ -429,7 +449,7 @@ jobs:
       run: |
         set -e
         if grep -n 'PROVISIONING_PROFILE_SPECIFIER' Pods/Pods.xcodeproj/project.pbxproj 2>/dev/null; then
-          echo "⚠️ Warning: Pods project contains provisioning profile specifiers. Clearing them..."
+          echo "⚠️ Warning: Clearing provisioning profile specifiers from Pods..."
           ruby -e '
             require "xcodeproj"
             project = Xcodeproj::Project.open("Pods/Pods.xcodeproj")
@@ -462,21 +482,23 @@ jobs:
       working-directory: ${{ env.TARGET_DIR }}/ios/App
       env:
         XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+        APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+        PROFILE_UUID: ${{ env.PROFILE_UUID }}
       shell: bash
       run: |
         set -o pipefail
         
-        echo "Injecting manual signing configuration..."
-        ruby -e '
+        echo "Injecting manual signing configuration into App.xcodeproj..."
+        cat > /tmp/update_project.rb << 'RUBY_SCRIPT'
           require "xcodeproj"
           project = Xcodeproj::Project.open("App.xcodeproj")
           
           project.build_configurations.each do |config|
-            config.build_settings["EXCLUDED_ARCHS[sdk=*]"] = "arm64e"
             config.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
             config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
             config.build_settings["SDKROOT"] = "iphoneos"
             config.build_settings["SUPPORTED_PLATFORMS"] = "iphoneos iphonesimulator"
+            config.build_settings["EXCLUDED_ARCHS[sdk=*]"] = "arm64e"
             config.build_settings["ARCHS"] = "arm64"
           end
 
@@ -497,12 +519,14 @@ jobs:
             end
 
             target.shell_script_build_phases.each do |phase|
-              phase.always_out_of_date = "1" if phase.respond_to?(:always_out_of_date=)
+              phase.always_out_of_date = true if phase.respond_to?(:always_out_of_date=)
             end
           end
           project.save
-        '
-        echo "✅ Updated App.xcodeproj"
+        RUBY_SCRIPT
+
+        ruby /tmp/update_project.rb
+        echo "✅ Successfully updated App.xcodeproj"
 
         echo "Starting clean Xcode archive..."
         xcodebuild archive \
@@ -534,38 +558,41 @@ jobs:
     # ============================================================
     - name: Create Export Options
       working-directory: ${{ env.TARGET_DIR }}
+      env:
+        APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+        PROFILE_UUID: ${{ env.PROFILE_UUID }}
+        BUNDLE_ID: ${{ env.BUNDLE_ID }}
       shell: bash
       run: |
         set -e
-        ruby -e '
-          content = <<~XML
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-              "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-              <key>method</key>
-              <string>app-store-connect</string>
-              <key>teamID</key>
-              <string>#{ENV["APPLE_TEAM_ID"]}</string>
-              <key>signingStyle</key>
-              <string>manual</string>
-              <key>signingCertificate</key>
-              <string>Apple Distribution</string>
-              <key>uploadSymbols</key>
-              <true/>
-              <key>uploadBitcode</key>
-              <false/>
-              <key>provisioningProfiles</key>
-              <dict>
-                <key>#{ENV["BUNDLE_ID"]}</key>
-                <string>#{ENV["PROFILE_UUID"]}</string>
-              </dict>
-            </dict>
-            </plist>
-          XML
-          File.write("exportOptions.plist", content)
-        '
+        cat > exportOptions.plist << PLIST_EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>method</key>
+          <string>app-store-connect</string>
+          <key>teamID</key>
+          <string>$APPLE_TEAM_ID</string>
+          <key>signingStyle</key>
+          <string>manual</string>
+          <key>signingCertificate</key>
+          <string>Apple Distribution</string>
+          <key>uploadSymbols</key>
+          <true/>
+          <key>uploadBitcode</key>
+          <false/>
+          <key>provisioningProfiles</key>
+          <dict>
+            <key>$BUNDLE_ID</key>
+            <string>$PROFILE_UUID</string>
+          </dict>
+        </dict>
+        </plist>
+        PLIST_EOF
+
+        echo "Export options created:"
+        cat exportOptions.plist
 
     # ============================================================
     # 22. EXPORT IPA
@@ -594,6 +621,7 @@ jobs:
           echo "ERROR: No IPA file found."
           exit 1
         fi
+        echo "✅ IPA file found: $IPA_PATH"
 
     # ============================================================
     # 24. UPLOAD IPA AS GITHUB ARTIFACT
