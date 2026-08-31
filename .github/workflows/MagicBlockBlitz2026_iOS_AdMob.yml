@@ -212,12 +212,7 @@ jobs:
         if [ -f "Podfile" ]; then
           sed -i '' "s/platform :ios, '[^']*'/platform :ios, '15.0'/g" Podfile
           echo "✅ Podfile minimum iOS version updated."
-        fi
-
-        if [ -f "App.xcodeproj/project.pbxproj" ]; then
-          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g' App.xcodeproj/project.pbxproj
-          echo "✅ project.pbxproj deployment target updated."
-        fi
+        fi 
 
     # ============================================================
     # 8.6. CONFIGURE ADMOB & ATT IN INFO.PLIST
@@ -487,23 +482,28 @@ jobs:
         project.build_configurations.each do |config|
           config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
           config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+          config.build_settings['SDKROOT'] = 'iphoneos'
+          config.build_settings['SUPPORTED_PLATFORMS'] = 'iphoneos iphonesimulator'
         end
 
         # Target level settings
         project.targets.each do |target|
-          target.build_configurations.each do |config|
-            config.build_settings['DEVELOPMENT_TEAM'] = ENV['APPLE_TEAM_ID']
-            config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ENV['PROFILE_UUID']
-            config.build_settings['CODE_SIGN_STYLE'] = 'Manual'
-            config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution'
-            config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
-            config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
-          end
-          
-          # Silence "[CP] Embed Pods Frameworks" Xcode 15 dependency analysis warnings
-          target.shell_script_build_phases.each do |phase|
-            phase.always_out_of_date = '1' if phase.respond_to?(:always_out_of_date=)
-          end
+        # CRITICAL: Isolate modifications to the main App target only
+        next unless target.name == 'App' 
+
+        target.build_configurations.each do |config|
+          config.build_settings['DEVELOPMENT_TEAM'] = ENV['APPLE_TEAM_ID']
+          config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ENV['PROFILE_UUID']
+          config.build_settings['CODE_SIGN_STYLE'] = 'Manual'
+          config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution'
+          config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+        end
+        
+        # Silence "[CP] Embed Pods Frameworks" Xcode 15 dependency analysis warnings
+        target.shell_script_build_phases.each do |phase|
+          phase.always_out_of_date = '1' if phase.respond_to?(:always_out_of_date=)
+        end
         end
         project.save
         EOF
@@ -531,7 +531,6 @@ jobs:
           tail -n 100 "$RUNNER_TEMP/xcodebuild.log"
           exit $XCODE_EXIT_CODE
         fi
-
     # ============================================================
     # 18. VERIFY ARCHIVE
     # ============================================================
