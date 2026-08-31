@@ -477,6 +477,26 @@ jobs:
         /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" App/Info.plist
 
     # ============================================================
+    # 18.5 SET BUILD NUMBER & EXPORT COMPLIANCE
+    # ============================================================
+
+    - name: Clean Build Cache and Prepare Archive
+      working-directory: ${{ env.TARGET_DIR }}/ios/App
+      shell: bash
+      run: |
+        set -e
+        echo "Cleaning derived data and module cache..."
+        
+        # Remove all caches
+        rm -rf Pods/Pods.xcodeproj/xcuserdata 2>/dev/null || true
+        rm -rf Pods.lock 2>/dev/null || true
+        rm -rf DerivedData 2>/dev/null || true
+        
+        # Clear Xcode cache
+        defaults write com.apple.dt.Xcode IDESourceTreeDisplayNames -dict-add SOURCE_ROOT SOURCE_ROOT
+        
+        echo "✅ Cache cleaned"
+    # ============================================================
     # 19. CONFIGURE TARGET SIGNING AND ARCHIVE IOS APP
     # ============================================================
     - name: Build and Archive iOS App
