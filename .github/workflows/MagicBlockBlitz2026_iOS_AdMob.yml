@@ -257,7 +257,33 @@ jobs:
         # Keep login.keychain in the search list so system roots are accessible during framework signing
         security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
         security default-keychain -s "$KEYCHAIN_PATH"
-
+    
+    # ============================================================
+    # 10.5. INSTALL PROVISIONING PROFILE
+    # ============================================================
+    - name: Install Provisioning Profile
+      env:
+        PROVISIONING_PROFILE_BASE64: ${{ secrets.MOBILEPROVISION_BASE64 || secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+      shell: bash
+      run: |
+        set -e
+        echo "Installing provisioning profile..."
+        PP_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+        mkdir -p "$PP_DIR"
+        
+        PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+        echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+        
+        # Extract the UUID directly from the provisioning profile
+        PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(security cms -D -i "$PROFILE_PATH"))
+        echo "Extracted Profile UUID: $PROFILE_UUID"
+        
+        # Xcode requires the file to be named with its UUID
+        cp "$PROFILE_PATH" "$PP_DIR/$PROFILE_UUID.mobileprovision"
+        
+        # Export the UUID to the GitHub environment for Step 19
+        echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+    
     # ============================================================ 
     # 11. SYNC CAPACITOR IOS
     # ============================================================
