@@ -320,18 +320,16 @@ jobs:
           podfile_path = "Podfile"
           content = File.read(podfile_path)
           
-          # 1. Update the global platform target to satisfy any deployment minimums
-          content = content.sub(/^platform :ios, .*$/, "platform :ios, '15.0'")
-          
-          # 2. Lock ONLY the UMP SDK to 2.7.0 to prevent Swift API breaking changes
+          # 1. Lock ONLY the UMP SDK to 2.7.0 to prevent Swift API breaking changes.
+          # We leave Google-Mobile-Ads-SDK alone because the plugin strictly requires v11.3.0.
           if !content.include?("GoogleUserMessagingPlatform")
             content = content.sub(/target\s+['"]App['"]\s+do/, "target 'App' do\n  pod 'GoogleUserMessagingPlatform', '2.7.0'\n")
           end
           
-          # 3. Strip existing post_install hooks
+          # 2. Strip existing post_install hooks
           content = content.sub(/^post_install\s+do\s+\|installer\|.*?^end\s*$/m, "")
           
-          # 4. Apply custom Code Signing & Architecture fixes
+          # 3. Apply custom Code Signing & Architecture fixes
           post_install = %q{
           post_install do |installer|
             begin
@@ -369,8 +367,7 @@ jobs:
           File.write(podfile_path, updated)
         RUBY_EOF
         
-        # CORRECTED: Force deletion of Podfile.lock to clear the 3.1.0 snapshot
-        rm -rf Pods Podfile.lock 2>/dev/null || true
+        rm -rf Pods Pods.lock 2>/dev/null || true
         pod install --repo-update
 
     # ============================================================
