@@ -320,9 +320,10 @@ jobs:
           podfile_path = "Podfile"
           content = File.read(podfile_path)
           
-          # 1. Lock Google SDK versions to prevent Swift obsolescence errors
+          # 1. Lock ONLY the UMP SDK to 2.7.0 to prevent Swift API breaking changes.
+          # We leave Google-Mobile-Ads-SDK alone because the plugin strictly requires v11.3.0.
           if !content.include?("GoogleUserMessagingPlatform")
-            content = content.sub(/target\s+['"]App['"]\s+do/, "target 'App' do\n  pod 'Google-Mobile-Ads-SDK', '10.14.0'\n  pod 'GoogleUserMessagingPlatform', '2.7.0'\n")
+            content = content.sub(/target\s+['"]App['"]\s+do/, "target 'App' do\n  pod 'GoogleUserMessagingPlatform', '2.7.0'\n")
           end
           
           # 2. Strip existing post_install hooks
