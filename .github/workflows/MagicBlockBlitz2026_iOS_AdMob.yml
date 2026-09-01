@@ -22,7 +22,7 @@ jobs:
     # 1. CHECKOUT
     # ============================================================
     - name: Checkout Code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.2.2
 
     # ============================================================
     # 2. DETERMINE PROJECT DIRECTORY
@@ -316,7 +316,7 @@ jobs:
       shell: bash
       run: |
         set -e
-        echo "Configuring Podfile with ARM64e fix and CocoaPods settings..."
+        echo "Configuring Podfile with smart code signing logic..."
         ruby << 'RUBY_EOF'
           podfile_path = "Podfile"
           content = File.read(podfile_path)
@@ -324,7 +324,6 @@ jobs:
           # Remove existing post_install block using simple pattern matching
           content = content.sub(/^post_install\s+do\s+\|installer\|.*?^end\s*$/m, "")
           
-          # Define the new post_install hook with STRING values (not booleans)
           post_install = %q{
           post_install do |installer|
             begin
@@ -341,21 +340,31 @@ jobs:
                 # Set deployment target
                 config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
                 
-                # FIX: CocoaPods dynamic frameworks must be cryptographically signed for device archives!
-                # We supply the valid Team ID and Identity so it matches the parent app target.
-                config.build_settings["CODE_SIGNING_ALLOWED"] = "YES"
-                config.build_settings["CODE_SIGNING_REQUIRED"] = "YES"
-                config.build_settings["CODE_SIGN_IDENTITY"] = "Apple Distribution"
-                config.build_settings["DEVELOPMENT_TEAM"] = ENV["APPLE_TEAM_ID"]
-                
                 # Build settings
                 config.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] = "NO"
                 config.build_settings["DEBUG_INFORMATION_FORMAT"] = "dwarf-with-dsym"
                 config.build_settings["SDKROOT"] = "iphoneos"
                 config.build_settings["SUPPORTED_PLATFORMS"] = "iphoneos iphonesimulator"
+
+                # Check if the target is a Resource Bundle (they should NOT be signed)
+                is_resource_bundle = target.name.end_with?('Resources') || (target.respond_to?(:product_type) && target.product_type == 'com.apple.product-type.bundle')
+                
+                if is_resource_bundle
+                  config.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
+                  config.build_settings["CODE_SIGNING_REQUIRED"] = "NO"
+                  config.build_settings["CODE_SIGN_IDENTITY"] = ""
+                  config.build_settings["DEVELOPMENT_TEAM"] = ""
+                else
+                  # Standard frameworks MUST be signed for device archives
+                  config.build_settings["CODE_SIGN_STYLE"] = "Manual"
+                  config.build_settings["CODE_SIGNING_ALLOWED"] = "YES"
+                  config.build_settings["CODE_SIGNING_REQUIRED"] = "YES"
+                  config.build_settings["CODE_SIGN_IDENTITY"] = "Apple Distribution"
+                  config.build_settings["DEVELOPMENT_TEAM"] = ENV["APPLE_TEAM_ID"]
+                end
               end
               
-              # Mark script phases to always run - USE STRINGS "YES"/"NO", NOT BOOLEANS
+              # Mark script phases to always run - USE STRINGS "1"
               target.build_phases.each do |phase|
                 if phase.respond_to?(:always_out_of_date=)
                   phase.always_out_of_date = "1"
@@ -400,8 +409,6 @@ jobs:
         </plist>}
                   File.write("App/PrivacyInfo.xcprivacy", content)
                 '
-
-    # (Removed Step 16 here because it was actively breaking the framework signatures required by Xcode)
 
     # ============================================================
     # 18. SET BUILD NUMBER & EXPORT COMPLIANCE
@@ -456,7 +463,7 @@ jobs:
               config.build_settings["SUPPORTED_PLATFORMS"] = "iphoneos iphonesimulator"
               config.build_settings["EXCLUDED_ARCHS[sdk=*]"] = "arm64e"
             end
-            # Mark script phases to always run - USE STRINGS "YES"/"NO", NOT BOOLEANS
+            # Mark script phases to always run - USE STRINGS "1"
             target.shell_script_build_phases.each do |phase|
               phase.always_out_of_date = "1" if phase.respond_to?(:always_out_of_date=)
             end
