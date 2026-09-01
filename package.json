@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@capacitor-community/admob": "^8.1.0"
+  }
+}
