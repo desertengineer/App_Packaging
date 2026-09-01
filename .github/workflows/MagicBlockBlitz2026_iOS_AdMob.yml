@@ -258,35 +258,14 @@ jobs:
         security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
         security default-keychain -s "$KEYCHAIN_PATH"
 
+    # ============================================================ 
+    # 11. SYNC CAPACITOR IOS
     # ============================================================
-    # 11. INSTALL PROVISIONING PROFILE
-    # ============================================================
-    - name: Install Provisioning Profile
-      env:
-        BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE || secrets.APPLE_PROVISION_PROFILE || secrets.PROVISIONING_PROFILE_BASE64 }}
-        FALLBACK_BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
-        FALLBACK_TEAM_ID: ${{ vars.APPLE_DEVELOPER_TEAM_ID || vars.APPLE_TEAM_ID || 'XHNXQ72KYZ' }}
-      shell: bash
+    - name: Sync Capacitor iOS
+      working-directory: ${{ env.TARGET_DIR }}
       run: |
-        set -e
-        PP_PATH="$RUNNER_TEMP/build_pp.mobileprovision"
-        PLIST_PATH="$RUNNER_TEMP/profile.plist"
-        echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode > "$PP_PATH"
-        security cms -D -i "$PP_PATH" -o "$PLIST_PATH"
-        PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$PLIST_PATH")
-        PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" "$PLIST_PATH")
-        TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$PLIST_PATH" || true)
-        RAW_APP_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" "$PLIST_PATH")
-        BUNDLE_ID="${RAW_APP_ID#*.}"
-        [ -z "$BUNDLE_ID" ] || [ "$BUNDLE_ID" = "*" ] && BUNDLE_ID="$FALLBACK_BUNDLE_ID"
-        [ -z "$TEAM_ID" ] && TEAM_ID="$FALLBACK_TEAM_ID"
-        echo "APPLE_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
-        echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
-        echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
-        echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
-        PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-        mkdir -p "$PROFILE_DIR"
-        cp "$PP_PATH" "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
+        npm install
+        npx cap sync ios
 
     # ============================================================
     # 11.5. BUMP APP VERSION & BUILD NUMBER
@@ -320,17 +299,9 @@ jobs:
           podfile_path = "Podfile"
           content = File.read(podfile_path)
           
-          # Strip existing post_install hooks
-          content = content.sub(/^post_install\s+do\s+\|installer\|.*?^end\s*$/m, "")
-          
-          # Apply custom Code Signing & Architecture fixes
-          post_install = %q{
-          post_install do |installer|
-            begin
-              assertDeploymentTarget(installer)
-            rescue StandardError => err
-              puts "Warning: assertDeploymentTarget - #{err}"
-            end
+          # Append custom Code Signing & Architecture fixes dynamically
+          # without destroying Capacitor's native post_install hooks
+          custom_config = %q{
             installer.pods_project.targets.each do |target|
               is_resource_bundle = target.respond_to?(:product_type) && target.product_type == 'com.apple.product-type.bundle'
               
@@ -354,14 +325,20 @@ jobs:
                 end
               end
             end
-          end
           }
           
-          updated = content.strip + "\n\n" + post_install
-          File.write(podfile_path, updated)
+          if content.include?("post_install do |installer|")
+            content = content.sub(/post_install\s+do\s+\|installer\|/, "post_install do |installer|\n#{custom_config}")
+          else
+            content += "\npost_install do |installer|\n#{custom_config}\nend\n"
+          end
+          
+          File.write(podfile_path, content)
         RUBY_EOF
         
-        rm -rf Pods Pods.lock 2>/dev/null || true
+        # Force a completely clean pod installation
+        rm -rf Pods Podfile.lock 2>/dev/null || true
+        pod cache clean --all
         pod install --repo-update
 
     # ============================================================
