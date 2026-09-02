@@ -121,13 +121,13 @@ jobs:
           @capacitor/core@6 \
           @capacitor/cli@6 \
           @capacitor/ios@6
-        npm install @capacitor-community/admob@6 || npm install @capacitor-community/admob
+        
+        # Request @latest to avoid falling back to outdated major versions
+        npm install @capacitor-community/admob@latest
+        
         echo ""
         echo "=== Capacitor CLI version ==="
         npx cap --version
-        echo ""
-        echo "=== Installed Packages ==="
-        npm list --depth=0 || true
 
     # ============================================================
     # 7. CREATE CAPACITOR CONFIGURATION
@@ -327,7 +327,7 @@ jobs:
         fi
         echo "Successfully updated Version to 1.0.2 and Build Number to ${{ github.run_number }}"
 
-    # ============================================================ 
+    # ============================================================
     # 12. CONFIGURE PODFILE & INSTALL COCOAPODS
     # ============================================================
     - name: Configure Podfile and Install CocoaPods
@@ -341,8 +341,12 @@ jobs:
           podfile_path = "Podfile"
           content = File.read(podfile_path)
           
+          # Force modern Google UMP SDK to fix Swift obsolescence errors
+          if content.include?("target 'App' do")
+            content = content.sub(/target 'App' do/, "target 'App' do\n  pod 'GoogleUserMessagingPlatform', '>= 2.1.0'")
+          end
+          
           # Append custom Code Signing & Architecture fixes dynamically
-          # without destroying Capacitor's native post_install hooks
           custom_config = %q{
             installer.pods_project.targets.each do |target|
               is_resource_bundle = target.respond_to?(:product_type) && target.product_type == 'com.apple.product-type.bundle'
@@ -437,7 +441,7 @@ jobs:
         else
           echo "✅ APPLE_TEAM_ID is loaded. Length: ${#APPLE_TEAM_ID} characters."
         fi
-        
+
     # ============================================================
     # 19. CONFIGURE TARGET SIGNING AND ARCHIVE IOS APP
     # ============================================================
