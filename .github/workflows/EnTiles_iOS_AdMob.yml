@@ -218,25 +218,33 @@ jobs:
         npm install @capacitor/assets --save-dev
         mkdir -p assets
 
-        # Copy icon to root assets folder
-        if [ -f "www/assets/icon.png" ]; then
-          cp "www/assets/icon.png" "assets/icon.png"
-          cp "www/assets/icon.png" "assets/icon-only.png"
-        elif [ -f "www/icon.png" ]; then
-          cp "www/icon.png" "assets/icon.png"
-          cp "www/icon.png" "assets/icon-only.png"
+        # 1. Locate and stage the app icon (supports .png, .jpg, .jpeg)
+        ICON_FILE=$(find . -maxdepth 3 -type f \( -iname "icon.png" -o -iname "icon.jpg" -o -iname "icon.jpeg" -o -iname "logo.png" -o -iname "logo.jpg" \) -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -n 1)
+        if [ -n "$ICON_FILE" ]; then
+          EXT="${ICON_FILE##*.}"
+          cp "$ICON_FILE" "assets/icon.$EXT"
+          cp "$ICON_FILE" "assets/icon-only.$EXT"
+          cp "$ICON_FILE" "assets/logo.$EXT"
+          echo "✅ Found icon at $ICON_FILE, staged for generation."
+        else
+          echo "⚠️ WARNING: No valid app icon image found."
         fi
 
-        # Find splash image regardless of long filename and normalize it
-        SPLASH_FILE=$(find www/assets www/ -name "splash*.png" 2>/dev/null | head -n 1)
+        # 2. Locate and stage the splash screen (supports .png, .jpg, .jpeg)
+        SPLASH_FILE=$(find . -maxdepth 3 -type f \( -iname "splash*.png" -o -iname "splash*.jpg" -o -iname "splash*.jpeg" \) -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -n 1)
         if [ -n "$SPLASH_FILE" ]; then
-          cp "$SPLASH_FILE" "assets/splash.png"
+          EXT="${SPLASH_FILE##*.}"
+          cp "$SPLASH_FILE" "assets/splash.$EXT"
+          cp "$SPLASH_FILE" "assets/splash-dark.$EXT"
+          echo "✅ Found splash at $SPLASH_FILE, staged for generation."
+        else
+          echo "⚠️ WARNING: No valid splash screen image found."
         fi
 
-        # Run asset generation targeting iOS
+        # 3. Generate native iOS assets
         npx @capacitor/assets generate --ios --iosProject ios/App
 
-        # Fallback guarantee: Copy 1024x1024 icon into Xcode AppIcon set
+        # 4. Fallback guarantee: Copy directly into Xcode AppIcon set (Strictly PNG to satisfy Apple ITMS-90704 requirement)
         ASSETS_DIR="ios/App/App/Assets.xcassets/AppIcon.appiconset"
         if [ -d "$ASSETS_DIR" ] && [ -f "assets/icon.png" ]; then
           cp "assets/icon.png" "$ASSETS_DIR/AppIcon-512@2x.png"
