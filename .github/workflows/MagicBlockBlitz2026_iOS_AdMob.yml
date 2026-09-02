@@ -528,7 +528,8 @@ jobs:
       shell: bash
       run: |
         set -e
-        cat > exportOptions.plist << 'PLIST_EOF'
+        # Removed single quotes around PLIST_EOF to enable variable expansion
+        cat > exportOptions.plist << PLIST_EOF
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
