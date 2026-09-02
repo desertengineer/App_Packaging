@@ -208,49 +208,96 @@ jobs:
         /usr/libexec/PlistBuddy -c "Set :NSUserTrackingUsageDescription '$ATT_MSG'" "$PLIST"
 
     # ============================================================
-    # 10. GENERATE IOS APP ASSETS
+    # 10. GENERATE IOS APP ASSETS (XCODE SINGLE-SIZE METHOD)
     # ============================================================
     - name: Generate Native iOS App Icons
       working-directory: ${{ env.TARGET_DIR }}
       run: |
         set -e
 
-        npm install @capacitor/assets --save-dev
-        mkdir -p assets
-
-        # 1. Locate source icon (supports .jpg, .jpeg, .png) and convert to 1024x1024 PNG
-        ICON_FILE=$(find . -maxdepth 3 -type f \( -iname "icon.png" -o -iname "icon.jpg" -o -iname "icon.jpeg" \) -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -n 1)
-        if [ -n "$ICON_FILE" ]; then
-          echo "Found source icon at $ICON_FILE"
-          sips -z 1024 1024 -s format png "$ICON_FILE" --out "assets/icon.png"
-          cp "assets/icon.png" "assets/icon-only.png"
-          cp "assets/icon.png" "assets/logo.png"
-        else
-          echo "⚠️ WARNING: No valid icon found!"
+        # 1. Locate the source icon (supports .jpg, .jpeg, .png)
+        ICON_FILE=$(find . -maxdepth 3 -type f \( -iname "icon.png" -o -iname "icon.jpg" -o -iname "icon.jpeg" \) -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/ios/*" 2>/dev/null | head -n 1)
+        
+        if [ -z "$ICON_FILE" ]; then
+          echo "❌ ERROR: No valid icon file (icon.jpg or icon.png) found in the repository."
+          exit 1
         fi
-
-        # 2. Locate source splash (supports .jpg, .jpeg, .png) and convert to PNG
-        SPLASH_FILE=$(find . -maxdepth 3 -type f \( -iname "splash*.png" -o -iname "splash*.jpg" -o -iname "splash*.jpeg" \) -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -n 1)
+        
+        echo "✅ Found source icon: $ICON_FILE"
+        
+        # 2. Target Xcode AppIcon directory
+        APPICON_SET="ios/App/App/Assets.xcassets/AppIcon.appiconset"
+        if [ ! -d "$APPICON_SET" ]; then
+          echo "❌ ERROR: AppIcon.appiconset directory not found. Capacitor sync may have failed."
+          exit 1
+        fi
+        
+        # 3. PURGE existing default Capacitor icons so the blue placeholders literally do not exist
+        echo "🗑️ Deleting default blue Capacitor icons..."
+        rm -f "$APPICON_SET"/*.png
+        
+        # 4. Convert and force-resize to 1024x1024 PNG using macOS native 'sips' tool
+        echo "⚙️ Converting and resizing icon to 1024x1024 PNG..."
+        sips -z 1024 1024 -s format png "$ICON_FILE" --out "$APPICON_SET/icon-1024.png"
+        
+        # 5. Overwrite Contents.json to use Apple's 'Single Size' feature
+        echo "📝 Updating Contents.json for Single Size App Icon..."
+        cat > "$APPICON_SET/Contents.json" <<EOF
+        {
+          "images" : [
+            {
+              "filename" : "icon-1024.png",
+              "idiom" : "universal",
+              "platform" : "ios",
+              "size" : "1024x1024"
+            }
+          ],
+          "info" : {
+            "author" : "xcode",
+            "version" : 1
+          }
+        }
+        EOF
+        
+        # 6. Handle Splash Screen fallback identically
+        SPLASH_FILE=$(find . -maxdepth 3 -type f \( -iname "splash*.png" -o -iname "splash*.jpg" -o -iname "splash*.jpeg" \) -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/ios/*" 2>/dev/null | head -n 1)
         if [ -n "$SPLASH_FILE" ]; then
-          echo "Found source splash at $SPLASH_FILE"
-          sips -s format png "$SPLASH_FILE" --out "assets/splash.png"
-          cp "assets/splash.png" "assets/splash-dark.png"
+          echo "✅ Found source splash: $SPLASH_FILE"
+          SPLASH_SET="ios/App/App/Assets.xcassets/Splash.imageset"
+          if [ -d "$SPLASH_SET" ]; then
+            rm -f "$SPLASH_SET"/*.png
+            sips -s format png "$SPLASH_FILE" --out "$SPLASH_SET/splash.png"
+            cat > "$SPLASH_SET/Contents.json" <<EOF
+            {
+              "images" : [
+                {
+                  "filename" : "splash.png",
+                  "idiom" : "universal",
+                  "scale" : "1x"
+                },
+                {
+                  "filename" : "splash.png",
+                  "idiom" : "universal",
+                  "scale" : "2x"
+                },
+                {
+                  "filename" : "splash.png",
+                  "idiom" : "universal",
+                  "scale" : "3x"
+                }
+              ],
+              "info" : {
+                "author" : "xcode",
+                "version" : 1
+              }
+            }
+        EOF
+          fi
+        else
+          echo "⚠️ No splash screen found, skipping splash replacement."
         fi
-
-        # 3. Run Capacitor asset generation
-        npx @capacitor/assets generate --ios --iosProject ios/App || true
-
-        # 4. Overwrite ALL PNG variants in Xcode's AppIcon set so no default blue icons remain
-        ASSETS_DIR="ios/App/App/Assets.xcassets/AppIcon.appiconset"
-        if [ -d "$ASSETS_DIR" ] && [ -f "assets/icon.png" ]; then
-          echo "Overwriting all asset sizes in $ASSETS_DIR..."
-          for target in "$ASSETS_DIR"/*.png; do
-            if [ -f "$target" ]; then
-              cp "assets/icon.png" "$target"
-              echo "Updated $target"
-            fi
-          done
-        fi
+        
+        echo "✅ Asset injection complete."
 
     # ============================================================
     # 11. IMPORT APPLE DISTRIBUTION CERTIFICATE
