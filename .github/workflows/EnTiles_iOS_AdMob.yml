@@ -309,11 +309,15 @@ jobs:
       run: |
         set -e
         PLIST="ios/App/App/Info.plist"
+        
+        # Add an offset of 20 to ensure the build number surpasses 12
+        NEW_BUILD_NUMBER=$(date +%s)
+        
         if ! /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.0" "$PLIST"; then
           /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString 1.0.0" "$PLIST"
         fi
-        if ! /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$PLIST"; then
-          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion ${{ github.run_number }}" "$PLIST"
+        if ! /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD_NUMBER" "$PLIST"; then
+          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion $NEW_BUILD_NUMBER" "$PLIST"
         fi
 
     # ============================================================
