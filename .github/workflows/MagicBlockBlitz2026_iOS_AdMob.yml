@@ -333,7 +333,7 @@ jobs:
     - name: Configure Podfile and Install CocoaPods
       working-directory: ${{ env.TARGET_DIR }}/ios/App
       env:
-        APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || vars.APPLE_TEAM_ID }}
       shell: bash
       run: |
         set -e
@@ -430,7 +430,7 @@ jobs:
       working-directory: ${{ env.TARGET_DIR }}/ios/App
       env:
         XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
-        APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || vars.APPLE_TEAM_ID }}
         PROFILE_UUID: ${{ env.PROFILE_UUID }}
       shell: bash
       run: |
@@ -498,14 +498,14 @@ jobs:
         echo "✅ Archive verified successfully"
 
     # ============================================================
-    # 21. CREATE EXPORT OPTIONS (INCLUDING dSYM UPLOAD)
+    # 21. CREATE EXPORT OPTIONS
     # ============================================================
     - name: Create Export Options
       working-directory: ${{ env.TARGET_DIR }}
       env:
-        APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || vars.APPLE_TEAM_ID }}
         PROFILE_UUID: ${{ env.PROFILE_UUID }}
-        BUNDLE_ID: ${{ env.BUNDLE_ID }}
+        BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER }}
       shell: bash
       run: |
         set -e
