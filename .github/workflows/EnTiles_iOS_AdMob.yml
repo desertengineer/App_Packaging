@@ -218,33 +218,29 @@ jobs:
         npm install @capacitor/assets --save-dev
         mkdir -p assets
 
-        # 1. Locate and stage the app icon (supports .png, .jpg, .jpeg)
-        ICON_FILE=$(find . -maxdepth 3 -type f \( -iname "icon.png" -o -iname "icon.jpg" -o -iname "icon.jpeg" -o -iname "logo.png" -o -iname "logo.jpg" \) -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -n 1)
+        # 1. Locate and force-convert app icon to strict PNG format using macOS 'sips'
+        ICON_FILE=$(find . -maxdepth 3 -type f \( -iname "icon.png" -o -iname "icon.jpg" -o -iname "icon.jpeg" \) -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -n 1)
         if [ -n "$ICON_FILE" ]; then
-          EXT="${ICON_FILE##*.}"
-          cp "$ICON_FILE" "assets/icon.$EXT"
-          cp "$ICON_FILE" "assets/icon-only.$EXT"
-          cp "$ICON_FILE" "assets/logo.$EXT"
-          echo "✅ Found icon at $ICON_FILE, staged for generation."
+          echo "Found icon at $ICON_FILE. Converting to assets/icon.png..."
+          sips -s format png "$ICON_FILE" --out "assets/icon.png"
+          cp "assets/icon.png" "assets/icon-only.png"
+          cp "assets/icon.png" "assets/logo.png"
         else
           echo "⚠️ WARNING: No valid app icon image found."
         fi
 
-        # 2. Locate and stage the splash screen (supports .png, .jpg, .jpeg)
+        # 2. Locate and force-convert splash screen to strict PNG format
         SPLASH_FILE=$(find . -maxdepth 3 -type f \( -iname "splash*.png" -o -iname "splash*.jpg" -o -iname "splash*.jpeg" \) -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -n 1)
         if [ -n "$SPLASH_FILE" ]; then
-          EXT="${SPLASH_FILE##*.}"
-          cp "$SPLASH_FILE" "assets/splash.$EXT"
-          cp "$SPLASH_FILE" "assets/splash-dark.$EXT"
-          echo "✅ Found splash at $SPLASH_FILE, staged for generation."
-        else
-          echo "⚠️ WARNING: No valid splash screen image found."
+          echo "Found splash at $SPLASH_FILE. Converting to assets/splash.png..."
+          sips -s format png "$SPLASH_FILE" --out "assets/splash.png"
+          cp "assets/splash.png" "assets/splash-dark.png"
         fi
 
         # 3. Generate native iOS assets
         npx @capacitor/assets generate --ios --iosProject ios/App
 
-        # 4. Fallback guarantee: Copy directly into Xcode AppIcon set (Strictly PNG to satisfy Apple ITMS-90704 requirement)
+        # 4. Fallback guarantee: Hard-copy into Xcode AppIcon set to ensure no blue placeholder remains
         ASSETS_DIR="ios/App/App/Assets.xcassets/AppIcon.appiconset"
         if [ -d "$ASSETS_DIR" ] && [ -f "assets/icon.png" ]; then
           cp "assets/icon.png" "$ASSETS_DIR/AppIcon-512@2x.png"
