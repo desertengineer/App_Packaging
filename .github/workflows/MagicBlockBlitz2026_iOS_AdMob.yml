@@ -422,7 +422,22 @@ jobs:
         /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" App/Info.plist || true
         /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" App/Info.plist || \
         /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" App/Info.plist
-
+    
+        # ============================================================
+    # 18.5. DIAGNOSTIC: VERIFY TEAM ID IS LOADED
+    # ============================================================
+    - name: Verify Apple Team ID
+      env:
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || vars.APPLE_TEAM_ID }}
+      shell: bash
+      run: |
+        if [ -z "$APPLE_TEAM_ID" ]; then
+          echo "❌ ERROR: APPLE_TEAM_ID is completely empty! GitHub is not passing the secret/variable."
+          exit 1
+        else
+          echo "✅ APPLE_TEAM_ID is loaded. Length: ${#APPLE_TEAM_ID} characters."
+        fi
+        
     # ============================================================
     # 19. CONFIGURE TARGET SIGNING AND ARCHIVE IOS APP
     # ============================================================
