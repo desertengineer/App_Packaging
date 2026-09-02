@@ -263,25 +263,41 @@ jobs:
     # ============================================================
     - name: Install Provisioning Profile
       env:
-        PROVISIONING_PROFILE_BASE64: ${{ secrets.MOBILEPROVISION_BASE64 || secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+        # UPDATED: Matches your exact GitHub Environment Secret name
+        PROVISIONING_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE }}
       shell: bash
       run: |
         set -e
         echo "Installing provisioning profile..."
+        
+        if [ -z "$PROVISIONING_PROFILE_BASE64" ]; then
+          echo "ERROR: Base64 Provisioning Profile secret is empty or missing!"
+          exit 1
+        fi
+        
         PP_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
         mkdir -p "$PP_DIR"
-        
         PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
-        echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
         
-        # Extract the UUID directly from the provisioning profile
+        # Safely decode the base64 string by explicitly stripping whitespace/newlines
+        echo "$PROVISIONING_PROFILE_BASE64" | tr -d '\n\r ' | base64 --decode > "$PROFILE_PATH"
+        
+        # Verify the decoded file is not empty
+        if [ ! -s "$PROFILE_PATH" ]; then
+          echo "ERROR: Decoded provisioning profile is 0 bytes. The Base64 string is invalid."
+          exit 1
+        fi
+        
+        # Extract the UUID
         PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(security cms -D -i "$PROFILE_PATH"))
+        
+        if [ -z "$PROFILE_UUID" ]; then
+          echo "ERROR: Failed to extract UUID. The profile may be corrupted."
+          exit 1
+        fi
+        
         echo "Extracted Profile UUID: $PROFILE_UUID"
-        
-        # Xcode requires the file to be named with its UUID
         cp "$PROFILE_PATH" "$PP_DIR/$PROFILE_UUID.mobileprovision"
-        
-        # Export the UUID to the GitHub environment for Step 19
         echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
     
     # ============================================================ 
