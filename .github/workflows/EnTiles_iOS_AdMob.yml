@@ -218,33 +218,38 @@ jobs:
         npm install @capacitor/assets --save-dev
         mkdir -p assets
 
-        # 1. Locate and force-convert app icon to strict PNG format using macOS 'sips'
+        # 1. Locate source icon (supports .jpg, .jpeg, .png) and convert to 1024x1024 PNG
         ICON_FILE=$(find . -maxdepth 3 -type f \( -iname "icon.png" -o -iname "icon.jpg" -o -iname "icon.jpeg" \) -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -n 1)
         if [ -n "$ICON_FILE" ]; then
-          echo "Found icon at $ICON_FILE. Converting to assets/icon.png..."
-          sips -s format png "$ICON_FILE" --out "assets/icon.png"
+          echo "Found source icon at $ICON_FILE"
+          sips -z 1024 1024 -s format png "$ICON_FILE" --out "assets/icon.png"
           cp "assets/icon.png" "assets/icon-only.png"
           cp "assets/icon.png" "assets/logo.png"
         else
-          echo "⚠️ WARNING: No valid app icon image found."
+          echo "⚠️ WARNING: No valid icon found!"
         fi
 
-        # 2. Locate and force-convert splash screen to strict PNG format
+        # 2. Locate source splash (supports .jpg, .jpeg, .png) and convert to PNG
         SPLASH_FILE=$(find . -maxdepth 3 -type f \( -iname "splash*.png" -o -iname "splash*.jpg" -o -iname "splash*.jpeg" \) -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -n 1)
         if [ -n "$SPLASH_FILE" ]; then
-          echo "Found splash at $SPLASH_FILE. Converting to assets/splash.png..."
+          echo "Found source splash at $SPLASH_FILE"
           sips -s format png "$SPLASH_FILE" --out "assets/splash.png"
           cp "assets/splash.png" "assets/splash-dark.png"
         fi
 
-        # 3. Generate native iOS assets
-        npx @capacitor/assets generate --ios --iosProject ios/App
+        # 3. Run Capacitor asset generation
+        npx @capacitor/assets generate --ios --iosProject ios/App || true
 
-        # 4. Fallback guarantee: Hard-copy into Xcode AppIcon set to ensure no blue placeholder remains
+        # 4. Overwrite ALL PNG variants in Xcode's AppIcon set so no default blue icons remain
         ASSETS_DIR="ios/App/App/Assets.xcassets/AppIcon.appiconset"
         if [ -d "$ASSETS_DIR" ] && [ -f "assets/icon.png" ]; then
-          cp "assets/icon.png" "$ASSETS_DIR/AppIcon-512@2x.png"
-          cp "assets/icon.png" "$ASSETS_DIR/AppIcon-1024@1x.png"
+          echo "Overwriting all asset sizes in $ASSETS_DIR..."
+          for target in "$ASSETS_DIR"/*.png; do
+            if [ -f "$target" ]; then
+              cp "assets/icon.png" "$target"
+              echo "Updated $target"
+            fi
+          done
         fi
 
     # ============================================================
