@@ -319,8 +319,8 @@ jobs:
         set -e
         echo "Bumping version numbers for App Store Connect..."
         PLIST="ios/App/App/Info.plist"
-        if ! /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.2" "$PLIST"; then
-          /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0.2" "$PLIST"
+        if ! /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.3" "$PLIST"; then
+          /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0.3" "$PLIST"
         fi
         if ! /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$PLIST"; then
           /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${{ github.run_number }}" "$PLIST"
