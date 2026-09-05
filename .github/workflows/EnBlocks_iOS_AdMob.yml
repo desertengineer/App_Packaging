@@ -596,6 +596,16 @@ jobs:
         if-no-files-found: error
 
     # ============================================================
+    # 24.5. UPLOAD dSYM FOR CRASH SYMBOLICATION
+    # ============================================================
+    - name: Upload dSYM Debug Symbols
+      uses: actions/upload-artifact@v4.6.1
+      with:
+        name: MagicBlockBlitz2026-dSYMs
+        path: ${{ runner.temp }}/App.xcarchive/dSYMs
+        if-no-files-found: warn
+        
+    # ============================================================
     # 25. UPLOAD TO APP STORE CONNECT / TESTFLIGHT
     # ============================================================
     - name: Upload to TestFlight / App Store Connect

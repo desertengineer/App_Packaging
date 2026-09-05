@@ -247,9 +247,14 @@ window.showRewardedAd = showRewardedAd;
 document.addEventListener('DOMContentLoaded', () => {
     console.log('EnBlocks web application loaded.');
     if (window.Capacitor) {
-        document.addEventListener('deviceready', initEnBlocksMonetization, false);
+        // Fix for Launch Crash (SIGABRT/FBSWorkspaceScenesClient)
+        // Delay initialization of AdMob plugin so that it isn't executing 
+        // while the App scene or Main Thread are still busy.
+        document.addEventListener('deviceready', () => {
+            setTimeout(initEnBlocksMonetization, 500);
+        }, false);
         // Fallback initialization
-        setTimeout(initEnBlocksMonetization, 1000);
+        setTimeout(initEnBlocksMonetization, 1500);
     }
 });
 
@@ -1052,4 +1057,4 @@ function checkGameOverVsPlayer() {
         renderBoard(document.getElementById('vs-player-board'), vsPlayerMeta, vsPlayerCells);
         vsPlayerDock = [generateSmartPiece(vsPlayerMeta, true), generateSmartPiece(vsPlayerMeta, true), generateSmartPiece(vsPlayerMeta, true)]; fillDock('vs-slot', vsPlayerDock);
     }
-} 
+}
