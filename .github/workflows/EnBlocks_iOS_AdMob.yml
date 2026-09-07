@@ -165,6 +165,7 @@ jobs:
         echo "Pre-warming CocoaPods trunk..."
         pod repo add trunk https://cdn.cocoapods.org/ || true
         export COCOAPODS_DISABLE_STATS=true
+        
         if [ ! -d "ios" ]; then
           echo "Creating iOS platform..."
           npx cap add ios || echo "⚠️ Capacitor pod install failed, step 12 will handle it."
@@ -202,11 +203,14 @@ jobs:
         set -e
         echo "Injecting unified ADMOB_APP_ID into Info.plist..."
         PLIST="ios/App/App/Info.plist"
+        
         /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$ADMOB_APP_ID'" "$PLIST" || \
         /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '$ADMOB_APP_ID'" "$PLIST"
+        
         ATT_MSG="This identifier will be used to deliver personalized ads to you."
         /usr/libexec/PlistBuddy -c "Add :NSUserTrackingUsageDescription string '$ATT_MSG'" "$PLIST" || \
         /usr/libexec/PlistBuddy -c "Set :NSUserTrackingUsageDescription '$ATT_MSG'" "$PLIST"
+        
         /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems array" "$PLIST" || true
         /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0 dict" "$PLIST" || true
         /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0:SKAdNetworkIdentifier string 'cstr6suwng.skadnetwork'" "$PLIST" || true
@@ -257,19 +261,17 @@ jobs:
         # Keep login.keychain in the search list so system roots are accessible during framework signing
         security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
         security default-keychain -s "$KEYCHAIN_PATH"
-    
+
     # ============================================================
     # 10.5. INSTALL PROVISIONING PROFILE
     # ============================================================
     - name: Install Provisioning Profile
       env:
-        # UPDATED: Matches your exact GitHub Environment Secret name
         PROVISIONING_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE }}
       shell: bash
       run: |
         set -e
         echo "Installing provisioning profile..."
-        
         if [ -z "$PROVISIONING_PROFILE_BASE64" ]; then
           echo "ERROR: Base64 Provisioning Profile secret is empty or missing!"
           exit 1
@@ -282,13 +284,11 @@ jobs:
         # Safely decode the base64 string by explicitly stripping whitespace/newlines
         echo "$PROVISIONING_PROFILE_BASE64" | tr -d '\n\r ' | base64 --decode > "$PROFILE_PATH"
         
-        # Verify the decoded file is not empty
         if [ ! -s "$PROFILE_PATH" ]; then
           echo "ERROR: Decoded provisioning profile is 0 bytes. The Base64 string is invalid."
           exit 1
         fi
         
-        # Extract the UUID
         PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(security cms -D -i "$PROFILE_PATH"))
         
         if [ -z "$PROFILE_UUID" ]; then
@@ -299,18 +299,9 @@ jobs:
         echo "Extracted Profile UUID: $PROFILE_UUID"
         cp "$PROFILE_PATH" "$PP_DIR/$PROFILE_UUID.mobileprovision"
         echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
-    
-    # ============================================================ 
-    # 11. SYNC CAPACITOR IOS
-    # ============================================================
-    - name: Sync Capacitor iOS
-      working-directory: ${{ env.TARGET_DIR }}
-      run: |
-        npm install
-        npx cap sync ios
 
     # ============================================================
-    # 11.5. BUMP APP VERSION & BUILD NUMBER
+    # 11. BUMP APP VERSION & BUILD NUMBER
     # ============================================================
     - name: Bump iOS Version and Build Number
       working-directory: ${{ env.TARGET_DIR }}
@@ -325,7 +316,7 @@ jobs:
         if ! /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$PLIST"; then
           /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${{ github.run_number }}" "$PLIST"
         fi
-        echo "Successfully updated Version to 1.0.2 and Build Number to ${{ github.run_number }}"
+        echo "Successfully updated Version to 1.0.3 and Build Number to ${{ github.run_number }}"
 
     # ============================================================
     # 12. CONFIGURE PODFILE & INSTALL COCOAPODS
@@ -388,7 +379,7 @@ jobs:
         pod install --repo-update
 
     # ============================================================
-    # 14. CREATE PRIVACY MANIFEST
+    # 13. CREATE PRIVACY MANIFEST
     # ============================================================
     - name: Create Privacy Manifest
       working-directory: ${{ env.TARGET_DIR }}/ios/App
@@ -416,19 +407,18 @@ jobs:
                 '
 
     # ============================================================
-    # 18. SET BUILD NUMBER & EXPORT COMPLIANCE
+    # 14. EXPORT COMPLIANCE
     # ============================================================
-    - name: Set Build Number & Export Compliance
+    - name: Set Export Compliance
       working-directory: ${{ env.TARGET_DIR }}/ios/App
       shell: bash
       run: |
         set -e
-        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" App/Info.plist || true
         /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" App/Info.plist || \
         /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" App/Info.plist
-    
-        # ============================================================
-    # 18.5. DIAGNOSTIC: VERIFY TEAM ID IS LOADED
+
+    # ============================================================
+    # 15. VERIFY TEAM ID
     # ============================================================
     - name: Verify Apple Team ID
       env:
@@ -443,7 +433,7 @@ jobs:
         fi
 
     # ============================================================
-    # 19. CONFIGURE TARGET SIGNING AND ARCHIVE IOS APP
+    # 16. BUILD AND ARCHIVE IOS APP
     # ============================================================
     - name: Build and Archive iOS App
       working-directory: ${{ env.TARGET_DIR }}/ios/App
@@ -491,20 +481,21 @@ jobs:
           project.save
           puts "✅ App.xcodeproj configured successfully"
         RUBY_EOF
-                echo "Starting clean Xcode archive..."
-                xcodebuild archive \
-                  -workspace App.xcworkspace \
-                  -scheme "$XCODE_SCHEME" \
-                  -configuration Release \
-                  -destination "generic/platform=iOS" \
-                  -archivePath "$RUNNER_TEMP/App.xcarchive" \
-                  -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-                  COMPILER_INDEX_STORE_ENABLE=NO \
-                  EXCLUDED_ARCHS=arm64e \
-                  | tee "$RUNNER_TEMP/xcodebuild.log"
+        
+        echo "Starting clean Xcode archive..."
+        xcodebuild archive \
+          -workspace App.xcworkspace \
+          -scheme "$XCODE_SCHEME" \
+          -configuration Release \
+          -destination "generic/platform=iOS" \
+          -archivePath "$RUNNER_TEMP/App.xcarchive" \
+          -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+          COMPILER_INDEX_STORE_ENABLE=NO \
+          EXCLUDED_ARCHS=arm64e \
+          | tee "$RUNNER_TEMP/xcodebuild.log"
 
     # ============================================================
-    # 20. VERIFY ARCHIVE
+    # 17. VERIFY ARCHIVE
     # ============================================================
     - name: Verify Xcode Archive
       shell: bash
@@ -517,18 +508,17 @@ jobs:
         echo "✅ Archive verified successfully"
 
     # ============================================================
-    # 21. CREATE EXPORT OPTIONS
+    # 18. CREATE EXPORT OPTIONS
     # ============================================================
     - name: Create Export Options
       working-directory: ${{ env.TARGET_DIR }}
       env:
         APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || vars.APPLE_TEAM_ID }}
         PROFILE_UUID: ${{ env.PROFILE_UUID }}
-        BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER }}
+        BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
       shell: bash
       run: |
         set -e
-        # Removed single quotes around PLIST_EOF to enable variable expansion
         cat > exportOptions.plist << PLIST_EOF
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -557,7 +547,7 @@ jobs:
         echo "Export options created"
 
     # ============================================================
-    # 22. EXPORT IPA
+    # 19. EXPORT IPA
     # ============================================================
     - name: Export IPA Package
       working-directory: ${{ env.TARGET_DIR }}
@@ -571,7 +561,7 @@ jobs:
           -exportPath ios/App/output
 
     # ============================================================
-    # 23. VERIFY IPA
+    # 20. VERIFY IPA & UPLOAD ARTIFACTS
     # ============================================================
     - name: Verify IPA Output
       working-directory: ${{ env.TARGET_DIR }}
@@ -585,9 +575,6 @@ jobs:
         fi
         echo "✅ IPA file found: $IPA_PATH"
 
-    # ============================================================
-    # 24. UPLOAD IPA AS GITHUB ARTIFACT
-    # ============================================================
     - name: Upload Signed IPA to Workflow Artifacts
       uses: actions/upload-artifact@v4.6.1
       with:
@@ -595,18 +582,15 @@ jobs:
         path: ${{ env.TARGET_DIR }}/ios/App/output/*.ipa
         if-no-files-found: error
 
-    # ============================================================
-    # 24.5. UPLOAD dSYM FOR CRASH SYMBOLICATION
-    # ============================================================
     - name: Upload dSYM Debug Symbols
       uses: actions/upload-artifact@v4.6.1
       with:
-        name: MagicBlockBlitz2026-dSYMs
+        name: MagicBlockBlitz-dSYMs
         path: ${{ runner.temp }}/App.xcarchive/dSYMs
         if-no-files-found: warn
-        
+
     # ============================================================
-    # 25. UPLOAD TO APP STORE CONNECT / TESTFLIGHT
+    # 21. UPLOAD TO APP STORE CONNECT / TESTFLIGHT
     # ============================================================
     - name: Upload to TestFlight / App Store Connect
       if: success()
@@ -622,6 +606,7 @@ jobs:
         API_KEYS_DIR="$HOME/.appstoreconnect/private_keys"
         mkdir -p "$API_KEYS_DIR"
         KEY_FILE="$API_KEYS_DIR/AuthKey_${KEY_ID}.p8"
+        
         echo "Processing App Store Connect Private Key..."
         if echo "$KEY_CONTENT" | base64 --decode >/dev/null 2>&1; then
           echo "Base64 encoded key detected. Decoding to .p8 file..."
@@ -631,15 +616,18 @@ jobs:
           printf "%s\n" "$KEY_CONTENT" > "$KEY_FILE"
         fi
         chmod 600 "$KEY_FILE"
+        
         if [ ! -s "$KEY_FILE" ]; then
           echo "ERROR: AuthKey file is empty. Please verify your GitHub Secret contains the key."
           exit 1
         fi
+        
         IPA_PATH=$(find ios/App/output -name "*.ipa" -print -quit)
         if [ -z "$IPA_PATH" ]; then
           echo "ERROR: No IPA file found to upload."
           exit 1
         fi
+        
         echo "Uploading $IPA_PATH to App Store Connect..."
         xcrun altool \
           --upload-app \
