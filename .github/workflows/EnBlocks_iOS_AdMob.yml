@@ -117,7 +117,7 @@ jobs:
           '
 
       # ============================================================
-      # 8. SYNC IOS PLATFORM (RAISE DEPLOYMENT TARGET TO iOS 15.0)
+      # 8. SYNC IOS PLATFORM (WITH POD SIGNING FIX)
       # ============================================================
       - name: Add / Sync iOS Native Platform
         working-directory: ${{ env.TARGET_DIR }}
@@ -133,12 +133,20 @@ jobs:
           p = "ios/App/Podfile"
           if os.path.exists(p):
               data = open(p).read()
+              
               # Update Podfile target to iOS 15.0
               updated = re.sub(r"platform :ios, .*", "platform :ios, \"15.0\"", data)
-              if "post_install" not in updated:
-                  updated += "\npost_install do |installer|\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings[\"IPHONEOS_DEPLOYMENT_TARGET\"] = \"15.0\"\n    end\n  end\nend\n"
+              
+              # Strip code signing requirements from Pods to prevent xcodebuild archiving errors
+              pod_fix = "\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n      config.build_settings[\"IPHONEOS_DEPLOYMENT_TARGET\"] = \"15.0\"\n    end\n  end"
+              
+              if "CODE_SIGNING_ALLOWED" not in updated:
+                  if "post_install do |installer|" in updated:
+                      updated = updated.replace("post_install do |installer|", "post_install do |installer|" + pod_fix)
+                  else:
+                      updated += "\npost_install do |installer|" + pod_fix + "\nend\n"
               open(p, "w").write(updated)
-              print("Updated Podfile minimum deployment target to iOS 15.0")
+              print("Updated Podfile minimum deployment target to iOS 15.0 and disabled Pod signing")
 
           pbx = "ios/App/App.xcodeproj/project.pbxproj"
           if os.path.exists(pbx):
