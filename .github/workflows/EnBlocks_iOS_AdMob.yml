@@ -18,285 +18,337 @@ jobs:
     environment: MagicBlockBlitz-Environment
     
     steps:
-    # ============================================================
-    # 1. CHECKOUT
-    # ============================================================
-    - name: Checkout Code
-      uses: actions/checkout@v4.2.2
+      # ============================================================
+      # 1. CHECKOUT
+      # ============================================================
+      - name: Checkout Code
+        uses: actions/checkout@v4.2.2
 
-    # ============================================================
-    # 2. DETERMINE PROJECT DIRECTORY
-    # ============================================================
-    - name: Determine Target Directory
-      shell: bash
-      run: |
-        set -e
-        RAW_DIR="${{ vars.MONOREPO_DIRECTORY }}"
-        RAW_DIR="${RAW_DIR%/}"
-        if [ -n "$RAW_DIR" ] && [ -d "$RAW_DIR" ]; then
-          TARGET_DIR="$RAW_DIR"
-        elif [ -d "EnBlocks" ]; then
-          TARGET_DIR="EnBlocks"
-        else
-          TARGET_DIR="."
-        fi
-        echo "Target Working Directory: $TARGET_DIR"
-        echo "TARGET_DIR=$TARGET_DIR" >> "$GITHUB_ENV"
-
-    # ============================================================
-    # 3. NODE.JS
-    # ============================================================
-    - name: Setup Node.js
-      uses: actions/setup-node@v4.2.0
-      with:
-        node-version: 22
-
-    # ============================================================
-    # 4. PREPARE HTML5 WEB APPLICATION
-    # ============================================================
-    - name: Prepare Web Directory
-      working-directory: ${{ env.TARGET_DIR }}
-      shell: bash
-      run: |
-        set -e
-        mkdir -p dist
-        echo "Preparing HTML5 application..."
-        for file in index.html index.js index.css; do
-          if [ -f "www/$file" ]; then
-            cp "www/$file" "dist/$file"
-          elif [ -f "$file" ]; then
-            cp "$file" "dist/$file"
+      # ============================================================
+      # 2. DETERMINE PROJECT DIRECTORY
+      # ============================================================
+      - name: Determine Target Directory
+        shell: bash
+        run: |
+          set -e
+          RAW_DIR="${{ vars.MONOREPO_DIRECTORY }}"
+          RAW_DIR="${RAW_DIR%/}"
+          if [ -n "$RAW_DIR" ] && [ -d "$RAW_DIR" ]; then
+            TARGET_DIR="$RAW_DIR"
+          elif [ -d "EnBlocks" ]; then
+            TARGET_DIR="EnBlocks"
+          else
+            TARGET_DIR="."
           fi
-        done
-        if [ -d "www/assets" ]; then
-          cp -R www/assets dist/
-        elif [ -d "assets" ]; then
-          cp -R assets dist/
-        fi
+          echo "Target Working Directory: $TARGET_DIR"
+          echo "TARGET_DIR=$TARGET_DIR" >> "$GITHUB_ENV"
 
-    # ============================================================
-    # 5. INSTALL PROJECT DEPENDENCIES
-    # ============================================================
-    - name: Install Dependencies
-      working-directory: ${{ env.TARGET_DIR }}
-      shell: bash
-      run: |
-        set -e
-        npm install --no-audit --no-fund --progress=false
+      # ============================================================
+      # 3. NODE.JS
+      # ============================================================
+      - name: Setup Node.js
+        uses: actions/setup-node@v4.2.0
+        with:
+          node-version: 22
 
-    # ============================================================
-    # 6. INSTALL CAPACITOR & ADMOB
-    # ============================================================
-    - name: Install Capacitor 6 & AdMob SDK
-      working-directory: ${{ env.TARGET_DIR }}
-      shell: bash
-      run: |
-        set -e
-        npm install --save-exact @capacitor/core@6 @capacitor/cli@6 @capacitor/ios@6
-        npm install @capacitor-community/admob@latest
+      # ============================================================
+      # 4. PREPARE HTML5 WEB APPLICATION
+      # ============================================================
+      - name: Prepare Web Directory
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          set -e
+          mkdir -p dist
+          echo "Preparing HTML5 application..."
+          for file in index.html index.js index.css; do
+            if [ -f "www/$file" ]; then
+              cp "www/$file" "dist/$file"
+            elif [ -f "$file" ]; then
+              cp "$file" "dist/$file"
+            fi
+          done
+          if [ -d "www/assets" ]; then
+            cp -R www/assets dist/
+          elif [ -d "assets" ]; then
+            cp -R assets dist/
+          fi
 
-    # ============================================================
-    # 7. CONFIGURE CAPACITOR
-    # ============================================================
-    - name: Configure Capacitor
-      working-directory: ${{ env.TARGET_DIR }}
-      env:
-        APP_ID_VAR: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
-        APP_NAME_VAR: ${{ vars.APP_NAME || 'Magic Block Blitz 2026' }}
-      shell: bash
-      run: |
-        set -e
-        ruby -e '
-          require "json"
-          config = {
-            "appId" => ENV["APP_ID_VAR"],
-            "appName" => ENV["APP_NAME_VAR"],
-            "webDir" => "dist"
-          }
-          File.write("capacitor.config.json", JSON.pretty_generate(config))
-        '
+      # ============================================================
+      # 5. INSTALL PROJECT DEPENDENCIES
+      # ============================================================
+      - name: Install Dependencies
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          set -e
+          npm install --no-audit --no-fund --progress=false
 
-    # ============================================================
-    # 8. SYNC IOS PLATFORM
-    # ============================================================
-    - name: Add / Sync iOS Native Platform
-      working-directory: ${{ env.TARGET_DIR }}
-      shell: bash
-      run: |
-        set -e
-        pod repo add trunk https://cdn.cocoapods.org/ || true
-        export COCOAPODS_DISABLE_STATS=true
-        if [ ! -d "ios" ]; then
-          npx cap add ios || true
-        else
-          npx cap sync ios || true
-        fi
+      # ============================================================
+      # 6. INSTALL CAPACITOR & ADMOB
+      # ============================================================
+      - name: Install Capacitor 6 & AdMob SDK
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          set -e
+          npm install --save-exact @capacitor/core@6 @capacitor/cli@6 @capacitor/ios@6
+          npm install @capacitor-community/admob@latest
 
-    # ============================================================
-    # 9. CONFIGURE ADMOB & ATT IN INFO.PLIST
-    # ============================================================
-    - name: Inject AdMob Credentials & ATT into Info.plist
-      working-directory: ${{ env.TARGET_DIR }}
-      env:
-        ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
-      shell: bash
-      run: |
-        set -e
-        PLIST="ios/App/App/Info.plist"
-        /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '$ADMOB_APP_ID'" "$PLIST" || \
-        /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '$ADMOB_APP_ID'" "$PLIST"
-        
-        ATT_MSG="This identifier will be used to deliver personalized ads to you."
-        /usr/libexec/PlistBuddy -c "Add :NSUserTrackingUsageDescription string '$ATT_MSG'" "$PLIST" || \
-        /usr/libexec/PlistBuddy -c "Set :NSUserTrackingUsageDescription '$ATT_MSG'" "$PLIST"
+      # ============================================================
+      # 7. CONFIGURE CAPACITOR
+      # ============================================================
+      - name: Configure Capacitor
+        working-directory: ${{ env.TARGET_DIR }}
+        env:
+          APP_ID_VAR: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
+          APP_NAME_VAR: ${{ vars.APP_NAME || 'Magic Block Blitz 2026' }}
+        shell: bash
+        run: |
+          set -e
+          ruby -e '
+            require "json"
+            config = {
+              "appId" => ENV["APP_ID_VAR"],
+              "appName" => ENV["APP_NAME_VAR"],
+              "webDir" => "dist"
+            }
+            File.write("capacitor.config.json", JSON.pretty_generate(config))
+          '
 
-    # ============================================================
-    # 10. IMPORT APPLE CERTIFICATES & PROFILES
-    # ============================================================
-    - name: Import Apple Distribution Certificate
-      env:
-        BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 || secrets.APPLE_DISTRIBUTION_CERT_P12_BASE64 }}
-        P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS || secrets.P12_PASSWORD }}
-        KEYCHAIN_PASSWORD: "temp_keychain_pass_${{ github.run_id }}"
-      shell: bash
-      run: |
-        set -e
-        CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
-        KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
-        echo -n "$BUILD_CERTIFICATE_BASE64" \vert{} base64 --decode > "$CERTIFICATE_PATH"
-        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-        security import "$CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-        security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
-        security default-keychain -s "$KEYCHAIN_PATH"
+      # ============================================================
+      # 8. SYNC IOS PLATFORM
+      # ============================================================
+      - name: Add / Sync iOS Native Platform
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          pod repo add trunk https://cdn.cocoapods.org/
+          export COCOAPODS_DISABLE_STATS=true
+          if [ ! -d "ios" ]; then
+            npx cap add ios
+          else
+            npx cap sync ios
+          fi
 
-    - name: Install Provisioning Profile
-      env:
-        PROVISIONING_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE }}
-      shell: bash
-      run: |
-        set -e
-        PP_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-        mkdir -p "$PP_DIR"
-        PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
-        echo "$PROVISIONING_PROFILE_BASE64" \vert{} tr -d '\n\r ' \vert{} base64 --decode > "$PROFILE_PATH"
-        PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(security cms -D -i "$PROFILE_PATH"))
-        cp "$PROFILE_PATH" "$PP_DIR/$PROFILE_UUID.mobileprovision"
-        echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+      # ============================================================
+      # 9. CONFIGURE ADMOB & ATT IN INFO.PLIST
+      # ============================================================
+      - name: Inject AdMob Credentials & ATT into Info.plist
+        working-directory: ${{ env.TARGET_DIR }}
+        env:
+          ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
+        shell: bash
+        run: |
+          set -e
+          python3 -c '
+          import os, subprocess
+          plist = "ios/App/App/Info.plist"
+          admob = os.environ.get("ADMOB_APP_ID", "")
+          att = "This identifier will be used to deliver personalized ads to you."
+          
+          for key, val in [("GADApplicationIdentifier", admob), ("NSUserTrackingUsageDescription", att)]:
+              cmd_add = ["/usr/libexec/PlistBuddy", "-c", f"Add :{key} string {val}", plist]
+              cmd_set = ["/usr/libexec/PlistBuddy", "-c", f"Set :{key} {val}", plist]
+              if subprocess.run(cmd_add).returncode != 0:
+                  subprocess.run(cmd_set)
+          '
 
-    # ============================================================
-    # 11. BUMP VERSION & INSTALL COCOAPODS
-    # ============================================================
-    - name: Bump iOS Version
-      working-directory: ${{ env.TARGET_DIR }}
-      shell: bash
-      run: |
-        PLIST="ios/App/App/Info.plist"
-        /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.3" "$PLIST" \vert{}\vert{} /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0.3" "$PLIST"
-        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${{ github.run_number }}" "$PLIST"
+      # ============================================================
+      # 10. IMPORT APPLE CERTIFICATES & PROFILES
+      # ============================================================
+      - name: Import Apple Distribution Certificate
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 || secrets.APPLE_DISTRIBUTION_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS || secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: "temp_keychain_pass_${{ github.run_id }}"
+        shell: bash
+        run: |
+          set -e
+          CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          
+          python3 -c '
+          import base64, os
+          cert_b64 = os.environ.get("BUILD_CERTIFICATE_BASE64", "")
+          cert_path = os.environ["RUNNER_TEMP"] + "/build_certificate.p12"
+          with open(cert_path, "wb") as f:
+              f.write(base64.b64decode(cert_b64.strip()))
+          '
+          
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
+          security default-keychain -s "$KEYCHAIN_PATH"
 
-    - name: Configure Podfile and Install CocoaPods
-      working-directory: ${{ env.TARGET_DIR }}/ios/App
-      shell: bash
-      run: |
-        set -e
-        rm -rf Pods Podfile.lock 2>/dev/null || true
-        pod cache clean --all
-        pod install --repo-update
+      - name: Install Provisioning Profile
+        env:
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE }}
+        shell: bash
+        run: |
+          set -e
+          PP_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PP_DIR"
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          
+          python3 -c '
+          import base64, os
+          prof_b64 = os.environ.get("PROVISIONING_PROFILE_BASE64", "")
+          clean_b64 = "".join(prof_b64.split())
+          with open(os.environ["RUNNER_TEMP"] + "/profile.mobileprovision", "wb") as f:
+              f.write(base64.b64decode(clean_b64))
+          '
+          
+          security cms -D -i "$PROFILE_PATH" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" "$RUNNER_TEMP/profile.plist")
+          cp "$PROFILE_PATH" "$PP_DIR/$PROFILE_UUID.mobileprovision"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
 
-    # ============================================================
-    # 12. BUILD AND ARCHIVE IOS APP
-    # ============================================================
-    - name: Build and Archive iOS App
-      working-directory: ${{ env.TARGET_DIR }}/ios/App
-      env:
-        XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
-      shell: bash
-      run: |
-        set -o pipefail
-        xcodebuild archive \
-          -workspace App.xcworkspace \
-          -scheme "$XCODE_SCHEME" \
-          -configuration Release \
-          -destination "generic/platform=iOS" \
-          -archivePath "$RUNNER_TEMP/App.xcarchive" \
-          EXCLUDED_ARCHS=arm64e \
-          | tee "$RUNNER_TEMP/xcodebuild.log"
+      # ============================================================
+      # 11. BUMP VERSION & INSTALL COCOAPODS
+      # ============================================================
+      - name: Bump iOS Version
+        working-directory: ${{ env.TARGET_DIR }}
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        shell: bash
+        run: |
+          python3 -c '
+          import subprocess, os
+          plist = "ios/App/App/Info.plist"
+          run_num = os.environ.get("RUN_NUMBER", "1")
+          
+          for key, val in [("CFBundleShortVersionString", "1.0.3"), ("CFBundleVersion", run_num)]:
+              c1 = subprocess.run(["/usr/libexec/PlistBuddy", "-c", f"Set :{key} {val}", plist])
+              if c1.returncode != 0:
+                  subprocess.run(["/usr/libexec/PlistBuddy", "-c", f"Add :{key} string {val}", plist])
+          '
 
-    # ============================================================
-    # 13. EXPORT IPA
-    # ============================================================
-    - name: Export IPA Package
-      working-directory: ${{ env.TARGET_DIR }}
-      env:
-        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || vars.APPLE_TEAM_ID }}
-        PROFILE_UUID: ${{ env.PROFILE_UUID }}
-        BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
-      shell: bash
-      run: |
-        set -e
-        cat > exportOptions.plist << PLIST_EOF
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-          <key>method</key>
-          <string>app-store-connect</string>
-          <key>teamID</key>
-          <string>$APPLE_TEAM_ID</string>
-          <key>provisioningProfiles</key>
+      - name: Configure Podfile and Install CocoaPods
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
+        run: |
+          set -e
+          rm -rf Pods Podfile.lock 2>/dev/null
+          pod cache clean --all
+          pod install --repo-update
+
+      # ============================================================
+      # 12. BUILD AND ARCHIVE IOS APP
+      # ============================================================
+      - name: Build and Archive iOS App
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        env:
+          XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+        shell: bash
+        run: |
+          xcodebuild archive \
+            -workspace App.xcworkspace \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            EXCLUDED_ARCHS=arm64e > "$RUNNER_TEMP/xcodebuild.log" 2>&1
+
+      # ============================================================
+      # 13. EXPORT IPA
+      # ============================================================
+      - name: Export IPA Package
+        working-directory: ${{ env.TARGET_DIR }}
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || vars.APPLE_TEAM_ID }}
+          PROFILE_UUID: ${{ env.PROFILE_UUID }}
+          BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
+        shell: bash
+        run: |
+          set -e
+          cat > exportOptions.plist << 'PLIST_EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.plist">
+          <plist version="1.0">
           <dict>
-            <key>$BUNDLE_ID</key>
-            <string>$PROFILE_UUID</string>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>$APPLE_TEAM_ID</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key>
+              <string>$PROFILE_UUID</string>
+            </dict>
           </dict>
-        </dict>
-        </plist>
-        PLIST_EOF
-        
-        mkdir -p ios/App/output
-        xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" -exportOptionsPlist exportOptions.plist -exportPath ios/App/output
+          </plist>
+          PLIST_EOF
+          
+          python3 -c '
+          import os
+          with open("exportOptions.plist", "r") as f:
+              content = f.read()
+          content = content.replace("$APPLE_TEAM_ID", os.environ.get("APPLE_TEAM_ID", ""))
+          content = content.replace("$BUNDLE_ID", os.environ.get("BUNDLE_ID", ""))
+          content = content.replace("$PROFILE_UUID", os.environ.get("PROFILE_UUID", ""))
+          with open("exportOptions.plist", "w") as f:
+              f.write(content)
+          '
+          
+          mkdir -p ios/App/output
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" -exportOptionsPlist exportOptions.plist -exportPath ios/App/output
 
-    # ============================================================
-    # 14. UPLOAD ARTIFACTS & dSYMs
-    # ============================================================
-    - name: Upload Signed IPA
-      uses: actions/upload-artifact@v4.6.1
-      with:
-        name: MagicBlockBlitz2026-iOS-Release
-        path: ${{ env.TARGET_DIR }}/ios/App/output/*.ipa
+      # ============================================================
+      # 14. UPLOAD ARTIFACTS & dSYMs
+      # ============================================================
+      - name: Upload Signed IPA
+        uses: actions/upload-artifact@v4.6.1
+        with:
+          name: MagicBlockBlitz2026-iOS-Release
+          path: ${{ env.TARGET_DIR }}/ios/App/output/*.ipa
 
-    - name: Upload dSYM Debug Symbols
-      uses: actions/upload-artifact@v4.6.1
-      with:
-        name: MagicBlockBlitz-dSYMs
-        path: ${{ runner.temp }}/App.xcarchive/dSYMs
-        if-no-files-found: warn
+      - name: Upload dSYM Debug Symbols
+        uses: actions/upload-artifact@v4.6.1
+        with:
+          name: MagicBlockBlitz-dSYMs
+          path: ${{ runner.temp }}/App.xcarchive/dSYMs
+          if-no-files-found: warn
 
-    # ============================================================
-    # 15. UPLOAD TO APP STORE CONNECT
-    # ============================================================
-    - name: Upload to TestFlight
-      if: success()
-      working-directory: ${{ env.TARGET_DIR }}
-      env:
-        KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID || vars.APP_STORE_CONNECT_KEY_ID || 'C6HLRTWSC2' }}
-        ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID || vars.APP_STORE_CONNECT_ISSUER_ID || '2e4974f6-27d6-476e-9322-0a79cff7bf00' }}
-        KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT || secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-      shell: bash
-      run: |
-        set -e
-        API_KEYS_DIR="$HOME/.appstoreconnect/private_keys"
-        mkdir -p "$API_KEYS_DIR"
-        KEY_FILE="$API_KEYS_DIR/AuthKey_${KEY_ID}.p8"
-        
-        if echo "$KEY_CONTENT" | base64 --decode >/dev/null 2>&1; then
-          echo "$KEY_CONTENT" \vert{} base64 --decode > "$KEY_FILE"
-        else
-          printf "%s\n" "$KEY_CONTENT" > "$KEY_FILE"
-        fi
-        chmod 600 "$KEY_FILE"
-        
-        IPA_PATH=$(find ios/App/output -name "*.ipa" -print -quit)
-        xcrun altool --upload-app -t ios -f "$IPA_PATH" --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
+      # ============================================================
+      # 15. UPLOAD TO APP STORE CONNECT
+      # ============================================================
+      - name: Upload to TestFlight
+        if: success()
+        working-directory: ${{ env.TARGET_DIR }}
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID || vars.APP_STORE_CONNECT_KEY_ID || 'C6HLRTWSC2' }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID || vars.APP_STORE_CONNECT_ISSUER_ID || '2e4974f6-27d6-476e-9322-0a79cff7bf00' }}
+          KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT || secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -e
+          API_KEYS_DIR="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$API_KEYS_DIR"
+          KEY_FILE="$API_KEYS_DIR/AuthKey_${KEY_ID}.p8"
+          export KEY_FILE
+          
+          python3 -c '
+          import base64, os
+          key_content = os.environ.get("KEY_CONTENT", "")
+          key_file = os.environ.get("KEY_FILE", "")
+          try:
+              decoded = base64.b64decode(key_content).decode("utf-8")
+              if "BEGIN PRIVATE KEY" in decoded:
+                  with open(key_file, "w") as f:
+                      f.write(decoded)
+              else:
+                  with open(key_file, "w") as f:
+                      f.write(key_content)
+          except Exception:
+              with open(key_file, "w") as f:
+                  f.write(key_content)
+          '
+          chmod 600 "$KEY_FILE"
+          
+          IPA_PATH=$(find ios/App/output -name "*.ipa" -print)
+          xcrun altool --upload-app -t ios -f "$IPA_PATH" --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
+
