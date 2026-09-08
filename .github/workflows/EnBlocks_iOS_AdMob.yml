@@ -133,12 +133,20 @@ jobs:
           p = "ios/App/Podfile"
           if os.path.exists(p):
               data = open(p).read()
-              # Update target to iOS 15.0 required by @capacitor-community/admob
+              # Update Podfile target to iOS 15.0
               updated = re.sub(r"platform :ios, .*", "platform :ios, \"15.0\"", data)
               if "post_install" not in updated:
                   updated += "\npost_install do |installer|\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings[\"IPHONEOS_DEPLOYMENT_TARGET\"] = \"15.0\"\n    end\n  end\nend\n"
               open(p, "w").write(updated)
               print("Updated Podfile minimum deployment target to iOS 15.0")
+
+          pbx = "ios/App/App.xcodeproj/project.pbxproj"
+          if os.path.exists(pbx):
+              data = open(pbx).read()
+              # Update Xcode project target to iOS 15.0
+              updated = re.sub(r"IPHONEOS_DEPLOYMENT_TARGET = [0-9\.]+;", "IPHONEOS_DEPLOYMENT_TARGET = 15.0;", data)
+              open(pbx, "w").write(updated)
+              print("Updated project.pbxproj deployment target to 15.0")
           '
 
           npx cap sync ios
@@ -255,6 +263,8 @@ jobs:
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         env:
           XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || vars.APPLE_TEAM_ID }}
+          PROFILE_UUID: ${{ env.PROFILE_UUID }}
         shell: bash
         run: |
           xcodebuild archive \
@@ -263,7 +273,12 @@ jobs:
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
-            EXCLUDED_ARCHS=arm64e > "$RUNNER_TEMP/xcodebuild.log" 2>&1
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+            EXCLUDED_ARCHS=arm64e > "$RUNNER_TEMP/xcodebuild.log" 2>&1 || { echo "=== XCODEBUILD ERROR LOG ==="; cat "$RUNNER_TEMP/xcodebuild.log"; exit 1; }
 
       # ============================================================
       # 13. EXPORT IPA
