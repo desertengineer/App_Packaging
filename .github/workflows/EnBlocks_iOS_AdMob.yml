@@ -117,7 +117,7 @@ jobs:
           '
 
       # ============================================================
-      # 8. SYNC IOS PLATFORM
+      # 8. SYNC IOS PLATFORM (RAISE DEPLOYMENT TARGET TO iOS 15.0)
       # ============================================================
       - name: Add / Sync iOS Native Platform
         working-directory: ${{ env.TARGET_DIR }}
@@ -133,9 +133,12 @@ jobs:
           p = "ios/App/Podfile"
           if os.path.exists(p):
               data = open(p).read()
-              updated = re.sub(r"platform :ios, .*", "platform :ios, \"14.0\"", data)
+              # Update target to iOS 15.0 required by @capacitor-community/admob
+              updated = re.sub(r"platform :ios, .*", "platform :ios, \"15.0\"", data)
+              if "post_install" not in updated:
+                  updated += "\npost_install do |installer|\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings[\"IPHONEOS_DEPLOYMENT_TARGET\"] = \"15.0\"\n    end\n  end\nend\n"
               open(p, "w").write(updated)
-              print("Updated Podfile minimum deployment target to iOS 14.0")
+              print("Updated Podfile minimum deployment target to iOS 15.0")
           '
 
           npx cap sync ios
@@ -360,5 +363,3 @@ jobs:
           
           IPA_PATH=$(find ios/App/output -name "*.ipa" -print)
           xcrun altool --upload-app -t ios -f "$IPA_PATH" --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
-
-
