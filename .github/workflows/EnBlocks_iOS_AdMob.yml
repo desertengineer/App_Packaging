@@ -123,7 +123,6 @@ jobs:
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
-          pod repo add trunk https://cdn.cocoapods.org/
           export COCOAPODS_DISABLE_STATS=true
           if [ ! -d "ios" ]; then
             npx cap add ios
@@ -351,4 +350,5 @@ jobs:
           
           IPA_PATH=$(find ios/App/output -name "*.ipa" -print)
           xcrun altool --upload-app -t ios -f "$IPA_PATH" --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
+
 
