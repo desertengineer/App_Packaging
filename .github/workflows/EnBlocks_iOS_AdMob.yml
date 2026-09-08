@@ -126,9 +126,19 @@ jobs:
           export COCOAPODS_DISABLE_STATS=true
           if [ ! -d "ios" ]; then
             npx cap add ios
-          else
-            npx cap sync ios
           fi
+
+          python3 -c '
+          import re, os
+          p = "ios/App/Podfile"
+          if os.path.exists(p):
+              data = open(p).read()
+              updated = re.sub(r"platform :ios, .*", "platform :ios, \"14.0\"", data)
+              open(p, "w").write(updated)
+              print("Updated Podfile minimum deployment target to iOS 14.0")
+          '
+
+          npx cap sync ios
 
       # ============================================================
       # 9. CONFIGURE ADMOB & ATT IN INFO.PLIST
