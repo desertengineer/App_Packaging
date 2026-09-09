@@ -183,7 +183,25 @@ jobs:
           '
 
       # ============================================================
-      # 10. IMPORT APPLE CERTIFICATES & PROFILES
+      # 10. GENERATE APP ICONS
+      # ============================================================
+      - name: Generate App Icons
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          npm install -g @capacitor/assets
+          if [ -f "assets/icon.png" ]; then
+            echo "Generating icons from assets/icon.png..."
+            npx capacitor-assets generate --ios --iconPath assets/icon.png
+          elif [ -f "www/assets/icon.png" ]; then
+            echo "Generating icons from www/assets/icon.png..."
+            npx capacitor-assets generate --ios --iconPath www/assets/icon.png
+          else
+            echo "WARNING: No icon.png found in assets/ or www/assets/. App will build with default Capacitor icons."
+          fi
+
+      # ============================================================
+      # 11. IMPORT APPLE CERTIFICATES & PROFILES
       # ============================================================
       - name: Import Apple Distribution Certificate
         env:
@@ -236,7 +254,7 @@ jobs:
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
 
       # ============================================================
-      # 11. BUMP VERSION & INSTALL COCOAPODS
+      # 12. BUMP VERSION & INSTALL COCOAPODS
       # ============================================================
       - name: Bump iOS Version
         working-directory: ${{ env.TARGET_DIR }}
@@ -265,7 +283,7 @@ jobs:
           pod install --repo-update
 
       # ============================================================
-      # 12. BUILD AND ARCHIVE IOS APP
+      # 13. BUILD AND ARCHIVE IOS APP
       # ============================================================
       - name: Build and Archive iOS App
         working-directory: ${{ env.TARGET_DIR }}/ios/App
@@ -289,7 +307,7 @@ jobs:
             EXCLUDED_ARCHS=arm64e > "$RUNNER_TEMP/xcodebuild.log" 2>&1 || { echo "=== XCODEBUILD ERROR LOG ==="; cat "$RUNNER_TEMP/xcodebuild.log"; exit 1; }
 
       # ============================================================
-      # 13. EXPORT IPA
+      # 14. EXPORT IPA
       # ============================================================
       - name: Export IPA Package
         working-directory: ${{ env.TARGET_DIR }}
@@ -333,7 +351,7 @@ jobs:
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" -exportOptionsPlist exportOptions.plist -exportPath ios/App/output
 
       # ============================================================
-      # 14. UPLOAD ARTIFACTS & dSYMs
+      # 15. UPLOAD ARTIFACTS & dSYMs
       # ============================================================
       - name: Upload Signed IPA
         uses: actions/upload-artifact@v4.6.1
@@ -349,7 +367,7 @@ jobs:
           if-no-files-found: warn
 
       # ============================================================
-      # 15. UPLOAD TO APP STORE CONNECT
+      # 16. UPLOAD TO APP STORE CONNECT
       # ============================================================
       - name: Upload to TestFlight
         if: success()
