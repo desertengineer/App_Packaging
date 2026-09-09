@@ -190,12 +190,12 @@ jobs:
         shell: bash
         run: |
           npm install -g @capacitor/assets
-          if [ -f "assets/icon.png" ]; then
-            echo "Generating icons from assets/icon.png..."
-            npx capacitor-assets generate --ios --iconPath assets/icon.png
-          elif [ -f "www/assets/icon.png" ]; then
-            echo "Generating icons from www/assets/icon.png..."
-            npx capacitor-assets generate --ios --iconPath www/assets/icon.png
+          if [ -f "assets/icon.png" ] || [ -f "assets/logo.png" ]; then
+            echo "Generating icons from assets/..."
+            npx capacitor-assets generate --ios --assetPath assets
+          elif [ -f "www/assets/icon.png" ] || [ -f "www/assets/logo.png" ]; then
+            echo "Generating icons from www/assets/..."
+            npx capacitor-assets generate --ios --assetPath www/assets
           else
             echo "WARNING: No icon.png found in assets/ or www/assets/. App will build with default Capacitor icons."
           fi
@@ -358,13 +358,6 @@ jobs:
         with:
           name: MagicBlockBlitz2026-iOS-Release
           path: ${{ env.TARGET_DIR }}/ios/App/output/*.ipa
-
-      - name: Upload dSYM Debug Symbols
-        uses: actions/upload-artifact@v4.6.1
-        with:
-          name: MagicBlockBlitz-dSYMs
-          path: ${{ runner.temp }}/App.xcarchive/dSYMs
-          if-no-files-found: warn
 
       # ============================================================
       # 16. UPLOAD TO APP STORE CONNECT
