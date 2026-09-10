@@ -1,3 +1,6 @@
+// App initialization is deferred to DOMContentLoaded and deviceready events
+// to comply with iOS threading and Capacitor lifecycle requirements.
+
 // ==========================================
 // Core Variables & Setup
 // ==========================================
