@@ -160,27 +160,38 @@ jobs:
           npx cap sync ios
 
       # ============================================================
-      # 9. CONFIGURE ADMOB & ATT IN INFO.PLIST
+      # 9. CONFIGURE ADMOB & ATT IN INFO.PLIST (Bekeirat Blueprint)
       # ============================================================
-      - name: Inject AdMob Credentials & ATT into Info.plist
+      - name: Inject AdMob Credentials & SKAdNetwork into Info.plist
         working-directory: ${{ env.TARGET_DIR }}
         env:
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
         shell: bash
         run: |
-          set -e
-          python3 -c '
-          import os, subprocess
-          plist = "ios/App/App/Info.plist"
-          admob = os.environ.get("ADMOB_APP_ID", "")
-          att = "This identifier will be used to deliver personalized ads to you."
+          PLIST="ios/App/App/Info.plist"
           
-          for key, val in [("GADApplicationIdentifier", admob), ("NSUserTrackingUsageDescription", att)]:
-              cmd_add = ["/usr/libexec/PlistBuddy", "-c", f"Add :{key} string {val}", plist]
-              cmd_set = ["/usr/libexec/PlistBuddy", "-c", f"Set :{key} {val}", plist]
-              if subprocess.run(cmd_add).returncode != 0:
-                  subprocess.run(cmd_set)
-          '
+          # 1. Set GADApplicationIdentifier
+          /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '${ADMOB_APP_ID}'" $PLIST || \
+          /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '${ADMOB_APP_ID}'" $PLIST
+          
+          # 2. Add App Tracking Transparency (ATT) Message
+          ATT_MSG="This identifier will be used to deliver personalized ads to you."
+          /usr/libexec/PlistBuddy -c "Add :NSUserTrackingUsageDescription string '${ATT_MSG}'" $PLIST || \
+          /usr/libexec/PlistBuddy -c "Set :NSUserTrackingUsageDescription '${ATT_MSG}'" $PLIST
+          
+          # 3. Add SKAdNetworkIdentifier for Google AdMob (Fixes SIGABRT Crash)
+          /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems array" $PLIST || true
+          /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0 dict" $PLIST || true
+          /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0:SKAdNetworkIdentifier string cstr6suwn9.skadnetwork" $PLIST || true
+          
+          # 4. Require Full Screen (Disables iPad split-screen multitasking to fix Data Abort crash)
+          /usr/libexec/PlistBuddy -c "Add :UIRequiresFullScreen bool true" $PLIST || \
+          /usr/libexec/PlistBuddy -c "Set :UIRequiresFullScreen true" $PLIST
+          
+          # 5. Export Compliance flag (bypasses encryption prompt in App Store Connect)
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" $PLIST || \
+          /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" $PLIST
+
 
       # ============================================================
       # 10. GENERATE APP ICONS
