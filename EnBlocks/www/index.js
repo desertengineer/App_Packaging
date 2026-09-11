@@ -250,14 +250,31 @@ window.showRewardedAd = showRewardedAd;
 document.addEventListener('DOMContentLoaded', () => {
     console.log('EnBlocks web application loaded.');
     if (window.Capacitor) {
-        // Fix for Launch Crash (SIGABRT/FBSWorkspaceScenesClient)
-        // Delay initialization of AdMob plugin so that it isn't executing 
-        // while the App scene or Main Thread are still busy.
-        document.addEventListener('deviceready', () => {
-            setTimeout(initEnBlocksMonetization, 500);
+        // Fix for Launch Crash (SIGABRT) & iPad Data Abort during safeAreaInsets
+        // Delay initialization of AdMob plugin until the app state is strictly active
+        // and the Main Thread has finished layout passes.
+        document.addEventListener('deviceready', async () => {
+            const AppPlugin = window.Capacitor.Plugins.App;
+            if (AppPlugin) {
+                try {
+                    const state = await AppPlugin.getState();
+                    if (state.isActive && !isAdMobInitialized) {
+                        setTimeout(initEnBlocksMonetization, 1000);
+                    }
+                    
+                    AppPlugin.addListener('appStateChange', (appState) => {
+                        if (appState.isActive && !isAdMobInitialized) {
+                            setTimeout(initEnBlocksMonetization, 500);
+                        }
+                    });
+                } catch (err) {
+                    setTimeout(initEnBlocksMonetization, 1500);
+                }
+            } else {
+                // Fallback initialization if App plugin is missing
+                setTimeout(initEnBlocksMonetization, 1500);
+            }
         }, false);
-        // Fallback initialization
-        setTimeout(initEnBlocksMonetization, 1500);
     }
 });
 
