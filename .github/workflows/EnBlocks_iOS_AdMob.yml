@@ -160,7 +160,7 @@ jobs:
           npx cap sync ios
 
       # ============================================================
-      # 9. CONFIGURE ADMOB & ATT IN INFO.PLIST (Bekeirat Blueprint)
+      # 9. CONFIGURE ADMOB & ATT IN INFO.PLIST (Python Blueprint)
       # ============================================================
       - name: Inject AdMob Credentials & SKAdNetwork into Info.plist
         working-directory: ${{ env.TARGET_DIR }}
@@ -168,29 +168,34 @@ jobs:
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
         shell: bash
         run: |
-          PLIST="ios/App/App/Info.plist"
+          python3 -c '
+          import subprocess, os
           
-          # 1. Set GADApplicationIdentifier
-          /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string '${ADMOB_APP_ID}'" $PLIST || \
-          /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier '${ADMOB_APP_ID}'" $PLIST
+          plist = "ios/App/App/Info.plist"
+          admob_id = os.environ.get("ADMOB_APP_ID", "")
           
-          # 2. Add App Tracking Transparency (ATT) Message
-          ATT_MSG="This identifier will be used to deliver personalized ads to you."
-          /usr/libexec/PlistBuddy -c "Add :NSUserTrackingUsageDescription string '${ATT_MSG}'" $PLIST || \
-          /usr/libexec/PlistBuddy -c "Set :NSUserTrackingUsageDescription '${ATT_MSG}'" $PLIST
+          # 1. GADApplicationIdentifier
+          if subprocess.run(["/usr/libexec/PlistBuddy", "-c", f"Add :GADApplicationIdentifier string {admob_id}", plist]).returncode != 0:
+              subprocess.run(["/usr/libexec/PlistBuddy", "-c", f"Set :GADApplicationIdentifier {admob_id}", plist])
+              
+          # 2. ATT Message
+          att_msg = "This identifier will be used to deliver personalized ads to you."
+          if subprocess.run(["/usr/libexec/PlistBuddy", "-c", f"Add :NSUserTrackingUsageDescription string {att_msg}", plist]).returncode != 0:
+              subprocess.run(["/usr/libexec/PlistBuddy", "-c", f"Set :NSUserTrackingUsageDescription {att_msg}", plist])
           
-          # 3. Add SKAdNetworkIdentifier for Google AdMob (Fixes SIGABRT Crash)
-          /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems array" $PLIST || true
-          /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0 dict" $PLIST || true
-          /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0:SKAdNetworkIdentifier string cstr6suwn9.skadnetwork" $PLIST || true
+          # 3. Add SKAdNetworkItems for AdMob (Fixes SIGABRT Crash)
+          subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Add :SKAdNetworkItems array", plist])
+          subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Add :SKAdNetworkItems:0 dict", plist])
+          subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Add :SKAdNetworkItems:0:SKAdNetworkIdentifier string cstr6suwn9.skadnetwork", plist])
           
           # 4. Require Full Screen (Disables iPad split-screen multitasking to fix Data Abort crash)
-          /usr/libexec/PlistBuddy -c "Add :UIRequiresFullScreen bool true" $PLIST || \
-          /usr/libexec/PlistBuddy -c "Set :UIRequiresFullScreen true" $PLIST
-          
-          # 5. Export Compliance flag (bypasses encryption prompt in App Store Connect)
-          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" $PLIST || \
-          /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" $PLIST
+          if subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Add :UIRequiresFullScreen bool true", plist]).returncode != 0:
+              subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Set :UIRequiresFullScreen true", plist])
+              
+          # 5. Export Compliance flag
+          if subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Add :ITSAppUsesNonExemptEncryption bool false", plist]).returncode != 0:
+              subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Set :ITSAppUsesNonExemptEncryption false", plist])
+          '
 
       # ============================================================
       # 10. GENERATE APP ICONS

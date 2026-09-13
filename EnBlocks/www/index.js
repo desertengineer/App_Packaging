@@ -251,29 +251,16 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('EnBlocks web application loaded.');
     if (window.Capacitor) {
         // Fix for Launch Crash (SIGABRT) & iPad Data Abort during safeAreaInsets
-        // Delay initialization of AdMob plugin until the app state is strictly active
-        // and the Main Thread has finished layout passes.
-        document.addEventListener('deviceready', async () => {
-            const AppPlugin = window.Capacitor.Plugins.App;
-            if (AppPlugin) {
-                try {
-                    const state = await AppPlugin.getState();
-                    if (state.isActive && !isAdMobInitialized) {
-                        setTimeout(initEnBlocksMonetization, 1000);
-                    }
-                    
-                    AppPlugin.addListener('appStateChange', (appState) => {
-                        if (appState.isActive && !isAdMobInitialized) {
-                            setTimeout(initEnBlocksMonetization, 500);
-                        }
-                    });
-                } catch (err) {
-                    setTimeout(initEnBlocksMonetization, 1500);
+        // We wait for deviceready, then enforce a solid timeout. This guarantees
+        // the Main Thread has finalized view layout boundaries before AdMob 
+        // spins up its background threads.
+        document.addEventListener('deviceready', () => {
+            console.log('Device ready. Deferring AdMob initialization to protect UI thread...');
+            setTimeout(() => {
+                if (!isAdMobInitialized) {
+                    initEnBlocksMonetization();
                 }
-            } else {
-                // Fallback initialization if App plugin is missing
-                setTimeout(initEnBlocksMonetization, 1500);
-            }
+            }, 2500); // 2.5 seconds strict delay fixes UI thread layout violations
         }, false);
     }
 });
