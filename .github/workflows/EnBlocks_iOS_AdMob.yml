@@ -115,15 +115,32 @@ jobs:
             }
             File.write("capacitor.config.json", JSON.pretty_generate(config))
           '
-
       # ============================================================
-      # 8. SYNC IOS PLATFORM (WITH POD SIGNING FIX)
+      # 8. SYNC IOS PLATFORM (WITH POD SIGNING & CONFIG FIX)
       # ============================================================
       - name: Add / Sync iOS Native Platform
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
           export COCOAPODS_DISABLE_STATS=true
+
+          # Inject AdMob configuration into capacitor.config.json if present
+          python3 -c '
+          import json, os
+          cfg_path = "capacitor.config.json"
+          if os.path.exists(cfg_path):
+              with open(cfg_path, "r") as f:
+                  data = json.load(f)
+              if "plugins" not in data:
+                  data["plugins"] = {}
+              data["plugins"]["AdMob"] = {
+                  "appId": "ca-app-pub-2658659289706339~4005585343"
+              }
+              with open(cfg_path, "w") as f:
+                  json.dump(data, f, indent=2)
+              print("Updated capacitor.config.json with AdMob config")
+          '
+
           if [ ! -d "ios" ]; then
             npx cap add ios
           fi
@@ -160,7 +177,7 @@ jobs:
           npx cap sync ios
 
       # ============================================================
-      # 9. CONFIGURE ADMOB & ATT IN INFO.PLIST (Python Blueprint)
+      # 9. CONFIGURE ADMOB & ATT IN INFO.PLIST (Python plistlib)
       # ============================================================
       - name: Inject AdMob Credentials & SKAdNetwork into Info.plist
         working-directory: ${{ env.TARGET_DIR }}
@@ -169,32 +186,74 @@ jobs:
         shell: bash
         run: |
           python3 -c '
-          import subprocess, os
-          
-          plist = "ios/App/App/Info.plist"
-          admob_id = os.environ.get("ADMOB_APP_ID", "")
-          
+          import os, plistlib
+
+          plist_path = "ios/App/App/Info.plist"
+          if not os.path.exists(plist_path):
+              print(f"Error: {plist_path} not found")
+              exit(1)
+
+          with open(plist_path, "rb") as f:
+              plist = plistlib.load(f)
+
           # 1. GADApplicationIdentifier
-          if subprocess.run(["/usr/libexec/PlistBuddy", "-c", f"Add :GADApplicationIdentifier string {admob_id}", plist]).returncode != 0:
-              subprocess.run(["/usr/libexec/PlistBuddy", "-c", f"Set :GADApplicationIdentifier {admob_id}", plist])
-              
-          # 2. ATT Message
-          att_msg = "This identifier will be used to deliver personalized ads to you."
-          if subprocess.run(["/usr/libexec/PlistBuddy", "-c", f"Add :NSUserTrackingUsageDescription string {att_msg}", plist]).returncode != 0:
-              subprocess.run(["/usr/libexec/PlistBuddy", "-c", f"Set :NSUserTrackingUsageDescription {att_msg}", plist])
-          
-          # 3. Add SKAdNetworkItems for AdMob (Fixes SIGABRT Crash)
-          subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Add :SKAdNetworkItems array", plist])
-          subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Add :SKAdNetworkItems:0 dict", plist])
-          subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Add :SKAdNetworkItems:0:SKAdNetworkIdentifier string cstr6suwn9.skadnetwork", plist])
-          
-          # 4. Require Full Screen (Disables iPad split-screen multitasking to fix Data Abort crash)
-          if subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Add :UIRequiresFullScreen bool true", plist]).returncode != 0:
-              subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Set :UIRequiresFullScreen true", plist])
-              
-          # 5. Export Compliance flag
-          if subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Add :ITSAppUsesNonExemptEncryption bool false", plist]).returncode != 0:
-              subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Set :ITSAppUsesNonExemptEncryption false", plist])
+          admob_id = os.environ.get("ADMOB_APP_ID", "").strip()
+          if not admob_id or not admob_id.startswith("ca-app-pub-"):
+              admob_id = "ca-app-pub-2658659289706339~4005585343"
+          admob_id = admob_id.replace("\'", "").replace("\"", "")
+          plist["GADApplicationIdentifier"] = admob_id
+          print(f"Set GADApplicationIdentifier to {admob_id}")
+
+          # 2. ATT Usage Description
+          plist["NSUserTrackingUsageDescription"] = "This identifier will be used to deliver personalized ads to you."
+
+          # 3. Complete Google SKAdNetwork Identifiers
+          sk_ids = [
+              "cstr6suwn9.skadnetwork", "4d12p84t66.skadnetwork", "v9wttpbfk9.skadnetwork",
+              "n38lu8d63t.skadnetwork", "2383xqvh23.skadnetwork", "24t9a8vw3c.skadnetwork",
+              "252b538255.skadnetwork", "38pubd86ve.skadnetwork", "3qcr597p3d.skadnetwork",
+              "3qy4746463.skadnetwork", "3sh42y64q3.skadnetwork", "424m5254lk.skadnetwork",
+              "4468km3ulz.skadnetwork", "44jz63fc85.skadnetwork", "488r3q3dtq.skadnetwork",
+              "4fzdc2evr5.skadnetwork", "523jb4ffd3.skadnetwork", "52fl2v3hg5.skadnetwork",
+              "578prtvx9j.skadnetwork", "5a6flpkh64.skadnetwork", "5l3tpt756e.skadnetwork",
+              "5lm9lj6jb7.skadnetwork", "7375d33w16.skadnetwork", "7ug5zh24hu.skadnetwork",
+              "9rd84892mo.skadnetwork", "9t245vhmpl.skadnetwork", "av6w8kgt66.skadnetwork",
+              "c6k4g5qg8m.skadnetwork", "cp8zw746q7.skadnetwork", "e5fvk72637.skadnetwork",
+              "ejvt5qm6qe.skadnetwork", "f38h382jlk.skadnetwork", "f73kdq92p3.skadnetwork",
+              "g28c52ee13.skadnetwork", "glqzh8vgby.skadnetwork", "hs6bdukanm.skadnetwork",
+              "kbd757ywx3.skadnetwork", "klf5c3l555.skadnetwork", "lr835er364.skadnetwork",
+              "mlmmfcn3ed.skadnetwork", "mtkv5xtpkg.skadnetwork", "p78axxw29g.skadnetwork",
+              "4pfyvq9l8r.skadnetwork", "ppxm28t8ap.skadnetwork", "prcb7njmu6.skadnetwork",
+              "s39g8k73mm.skadnetwork", "t38b2kh725.skadnetwork", "tl55sbb4fm.skadnetwork",
+              "u67928k2ce.skadnetwork", "v72qych54b.skadnetwork", "wzmmz9fp6w.skadnetwork",
+              "yclnxrl5pm.skadnetwork", "ydx93a7ass.skadnetwork", "wg4vff78zm.skadnetwork"
+          ]
+          existing_sk = plist.get("SKAdNetworkItems", [])
+          existing_ids = set()
+          if isinstance(existing_sk, list):
+              for item in existing_sk:
+                  if isinstance(item, dict) and "SKAdNetworkIdentifier" in item:
+                      existing_ids.add(item["SKAdNetworkIdentifier"])
+          else:
+              existing_sk = []
+
+          for sk_id in sk_ids:
+              if sk_id not in existing_ids:
+                  existing_sk.append({"SKAdNetworkIdentifier": sk_id})
+                  existing_ids.add(sk_id)
+
+          plist["SKAdNetworkItems"] = existing_sk
+
+          # 4. Require Full Screen (Disables iPad split-screen multitasking layout crashes)
+          plist["UIRequiresFullScreen"] = True
+
+          # 5. Export Compliance
+          plist["ITSAppUsesNonExemptEncryption"] = False
+
+          with open(plist_path, "wb") as f:
+              plistlib.dump(plist, f)
+
+          print("Successfully updated Info.plist via plistlib")
           '
 
       # ============================================================
