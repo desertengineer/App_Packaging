@@ -125,7 +125,7 @@ jobs:
           export COCOAPODS_DISABLE_STATS=true
 
           # Inject AdMob configuration into capacitor.config.json if present
-          python3 -c '
+          python3 << 'EOF'
           import json, os
           cfg_path = "capacitor.config.json"
           if os.path.exists(cfg_path):
@@ -139,13 +139,13 @@ jobs:
               with open(cfg_path, "w") as f:
                   json.dump(data, f, indent=2)
               print("Updated capacitor.config.json with AdMob config")
-          '
+          EOF
 
           if [ ! -d "ios" ]; then
             npx cap add ios
           fi
 
-          python3 -c '
+          python3 << 'EOF'
           import re, os
           p = "ios/App/Podfile"
           if os.path.exists(p):
@@ -172,7 +172,7 @@ jobs:
               updated = re.sub(r"IPHONEOS_DEPLOYMENT_TARGET = [0-9\.]+;", "IPHONEOS_DEPLOYMENT_TARGET = 15.0;", data)
               open(pbx, "w").write(updated)
               print("Updated project.pbxproj deployment target to 15.0")
-          '
+          EOF
 
           npx cap sync ios
 
@@ -185,7 +185,7 @@ jobs:
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
         shell: bash
         run: |
-          python3 -c '
+          python3 << 'EOF'
           import os, plistlib
 
           plist_path = "ios/App/App/Info.plist"
@@ -200,7 +200,7 @@ jobs:
           admob_id = os.environ.get("ADMOB_APP_ID", "").strip()
           if not admob_id or not admob_id.startswith("ca-app-pub-"):
               admob_id = "ca-app-pub-2658659289706339~4005585343"
-          admob_id = admob_id.replace("\'", "").replace("\"", "")
+          admob_id = admob_id.replace("'", "").replace('"', "")
           plist["GADApplicationIdentifier"] = admob_id
           print(f"Set GADApplicationIdentifier to {admob_id}")
 
@@ -254,7 +254,7 @@ jobs:
               plistlib.dump(plist, f)
 
           print("Successfully updated Info.plist via plistlib")
-          '
+          EOF
 
       # ============================================================
       # 10. GENERATE APP ICONS
