@@ -1,4 +1,4 @@
-// App initialization is deferred to DOMContentLoaded and deviceready events
+// App initialization is deferred to DOMContentLoaded and native Capacitor ready
 // to comply with iOS threading and Capacitor lifecycle requirements.
 
 // ==========================================
@@ -98,6 +98,7 @@ let isRewardedLoaded = false;
  * Initialize AdMob SDK safely
  */
 async function initEnBlocksMonetization() {
+    if (isAdMobInitialized) return;
     const AdMob = getAdMob();
     if (!AdMob) {
         console.warn('Capacitor AdMob native plugin is not available in current environment.');
@@ -106,9 +107,9 @@ async function initEnBlocksMonetization() {
 
     try {
         await AdMob.initialize({
-            requestTrackingAuthorization: true,
+            requestTrackingAuthorization: false, // Prevents background ATT prompt crash on launch
             testingDevices: [],
-            initializeForTesting: true
+            initializeForTesting: false // Standard production mode
         });
         isAdMobInitialized = true;
         console.log('AdMob SDK initialized successfully.');
@@ -249,20 +250,12 @@ window.showRewardedAd = showRewardedAd;
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     console.log('EnBlocks web application loaded.');
-    if (window.Capacitor) {
-        // Fix for Launch Crash (SIGABRT) & iPad Data Abort during safeAreaInsets
-        // We wait for deviceready, then enforce a solid timeout. This guarantees
-        // the Main Thread has finalized view layout boundaries before AdMob 
-        // spins up its background threads.
-        document.addEventListener('deviceready', () => {
-            console.log('Device ready. Deferring AdMob initialization to protect UI thread...');
-            setTimeout(() => {
-                if (!isAdMobInitialized) {
-                    initEnBlocksMonetization();
-                }
-            }, 2500); // 2.5 seconds strict delay fixes UI thread layout violations
-        }, false);
-    }
+    // Delay initialization slightly to guarantee the iOS UI Window & layout are finalized
+    setTimeout(() => {
+        if (window.Capacitor && !isAdMobInitialized) {
+            initEnBlocksMonetization();
+        }
+    }, 1500);
 });
 
 /**
