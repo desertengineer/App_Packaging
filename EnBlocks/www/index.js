@@ -50,8 +50,12 @@ let musicVol = 0.5; let sfxVol = 0.8;
 
 // Safe helper to obtain Capacitor AdMob Plugin instance in Vanilla JS
 const getAdMob = () => {
-    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) {
-        return window.Capacitor.Plugins.AdMob;
+    try {
+        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) {
+            return window.Capacitor.Plugins.AdMob;
+        }
+    } catch (e) {
+        console.warn('AdMob plugin access check exception:', e);
     }
     return null;
 };
@@ -95,7 +99,7 @@ let isInterstitialLoaded = false;
 let isRewardedLoaded = false;
 
 /**
- * Initialize AdMob SDK safely
+ * Initialize AdMob SDK safely after window scene layout resolves
  */
 async function initEnBlocksMonetization() {
     if (isAdMobInitialized) return;
@@ -107,9 +111,9 @@ async function initEnBlocksMonetization() {
 
     try {
         await AdMob.initialize({
-            requestTrackingAuthorization: false, // Prevents background ATT prompt crash on launch
+            requestTrackingAuthorization: false,
             testingDevices: [],
-            initializeForTesting: false // Standard production mode
+            initializeForTesting: false
         });
         isAdMobInitialized = true;
         console.log('AdMob SDK initialized successfully.');
@@ -117,10 +121,12 @@ async function initEnBlocksMonetization() {
         // Attach listeners for auto-reloading ads
         attachAdEventListeners();
 
-        // Preload initial ads
-        preloadInterstitialAd();
-        preloadRewardedAd();
-        showBannerAd();
+        // Delay ad requests slightly to avoid iOS main-thread layout conflicts on launch
+        setTimeout(() => {
+            preloadInterstitialAd();
+            preloadRewardedAd();
+            showBannerAd();
+        }, 1000);
     } catch (err) {
         console.error('AdMob initialization error:', err);
     }
@@ -247,16 +253,27 @@ window.showBannerAd = showBannerAd;
 window.showInterstitialAd = showInterstitialAd;
 window.showRewardedAd = showRewardedAd;
 
-// Initialize app when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('EnBlocks web application loaded.');
-    // Delay initialization slightly to guarantee the iOS UI Window & layout are finalized
+// Initialize app when DOM and native Capacitor container are ready
+const safeAppInit = () => {
+    console.log('EnBlocks web application loaded safely.');
+    const loadScreen = document.getElementById('loading-screen');
+    const startScreen = document.getElementById('start-screen');
+    if (loadScreen) loadScreen.classList.add('hidden-screen');
+    if (startScreen) startScreen.classList.remove('hidden-screen');
+
+    // Defer AdMob SDK trigger until 2.5 seconds post-launch to protect against iPad window initialization crashes
     setTimeout(() => {
         if (window.Capacitor && !isAdMobInitialized) {
             initEnBlocksMonetization();
         }
-    }, 1500);
-});
+    }, 2500);
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', safeAppInit);
+} else {
+    safeAppInit();
+}
 
 /**
  * Internal Event Listeners & Auto-Reload Loops
@@ -265,19 +282,21 @@ async function attachAdEventListeners() {
     const AdMob = getAdMob();
     if (!AdMob) return;
 
-    // Interstitial Listeners
-    await AdMob.addListener('onInterstitialAdLoaded', () => { isInterstitialLoaded = true; });
-    await AdMob.addListener('onInterstitialAdDismissed', () => {
-        isInterstitialLoaded = false;
-        preloadInterstitialAd();
-    });
+    try {
+        await AdMob.addListener('onInterstitialAdLoaded', () => { isInterstitialLoaded = true; });
+        await AdMob.addListener('onInterstitialAdDismissed', () => {
+            isInterstitialLoaded = false;
+            preloadInterstitialAd();
+        });
 
-    // Rewarded Video Listeners
-    await AdMob.addListener(RewardAdPluginEvents.Loaded, () => { isRewardedLoaded = true; });
-    await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
-        isRewardedLoaded = false;
-        preloadRewardedAd();
-    });
+        await AdMob.addListener(RewardAdPluginEvents.Loaded, () => { isRewardedLoaded = true; });
+        await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+            isRewardedLoaded = false;
+            preloadRewardedAd();
+        });
+    } catch (e) {
+        console.warn('Failed attaching AdMob event listeners:', e);
+    }
 }
 
 // ==========================================
@@ -321,47 +340,53 @@ function playTone(freq, type, duration) {
 // ==========================================
 // Reset Data custom Confirm
 // ==========================================
-function confirmReset() { document.getElementById('reset-confirm-screen').classList.remove('hidden-screen'); }
-function cancelReset() { document.getElementById('reset-confirm-screen').classList.add('hidden-screen'); }
+function confirmReset() { const el = document.getElementById('reset-confirm-screen'); if (el) el.classList.remove('hidden-screen'); }
+function cancelReset() { const el = document.getElementById('reset-confirm-screen'); if (el) el.classList.add('hidden-screen'); }
 function executeReset() { localStorage.clear(); location.reload(); }
 
 // ==========================================
 // UI Navigation
 // ==========================================
-window.onload = () => {
-    setTimeout(() => {
-        document.getElementById('loading-screen').classList.add('hidden-screen');
-        document.getElementById('start-screen').classList.remove('hidden-screen');
-    }, 1000);
-};
-
 function applyTheme(index) {
     const root = document.documentElement;
-    root.style.setProperty('--bg-color-top', THEMES[index].top);
-    root.style.setProperty('--bg-color-bottom', THEMES[index].bottom);
+    if (THEMES[index]) {
+        root.style.setProperty('--bg-color-top', THEMES[index].top);
+        root.style.setProperty('--bg-color-bottom', THEMES[index].bottom);
+    }
 }
 
-function openSettings() { document.getElementById('settings-screen').classList.remove('hidden-screen'); }
-function closeSettings() { document.getElementById('settings-screen').classList.add('hidden-screen'); }
-function openRobotMenu() { document.getElementById('start-screen').classList.add('hidden-screen'); document.getElementById('robot-menu').classList.remove('hidden-screen'); }
-function closeRobotMenu() { document.getElementById('robot-menu').classList.add('hidden-screen'); document.getElementById('start-screen').classList.remove('hidden-screen'); }
+function openSettings() { const el = document.getElementById('settings-screen'); if (el) el.classList.remove('hidden-screen'); }
+function closeSettings() { const el = document.getElementById('settings-screen'); if (el) el.classList.add('hidden-screen'); }
+function openRobotMenu() { const s = document.getElementById('start-screen'), r = document.getElementById('robot-menu'); if (s) s.classList.add('hidden-screen'); if (r) r.classList.remove('hidden-screen'); }
+function closeRobotMenu() { const s = document.getElementById('start-screen'), r = document.getElementById('robot-menu'); if (r) r.classList.add('hidden-screen'); if (s) s.classList.remove('hidden-screen'); }
 
-document.getElementById('music-slider').addEventListener('input', (e) => { musicVol = e.target.value / 100; document.getElementById('music-val').innerText = `${e.target.value}%`; });
-document.getElementById('sfx-slider').addEventListener('input', (e) => { sfxVol = e.target.value / 100; document.getElementById('sfx-val').innerText = `${e.target.value}%`; playTone(400, 'sine', 0.1); });
+const musicSlider = document.getElementById('music-slider');
+if (musicSlider) {
+    musicSlider.addEventListener('input', (e) => { musicVol = e.target.value / 100; const lbl = document.getElementById('music-val'); if (lbl) lbl.innerText = `${e.target.value}%`; });
+}
+const sfxSlider = document.getElementById('sfx-slider');
+if (sfxSlider) {
+    sfxSlider.addEventListener('input', (e) => { sfxVol = e.target.value / 100; const lbl = document.getElementById('sfx-val'); if (lbl) lbl.innerText = `${e.target.value}%`; playTone(400, 'sine', 0.1); });
+}
 
 function returnToMenu() {
     if (activeMod) activeMod.onEnd();
     isVsMode = false;
     clearTimeout(robotTurnTimeout);
-    document.getElementById('game-over-screen').classList.add('hidden-screen');
-    document.getElementById('level-complete-screen').classList.add('hidden-screen');
-    document.getElementById('game-ui').classList.add('hidden');
-    document.getElementById('game-ui').style.opacity = '0';
-    document.getElementById('game-ui').style.pointerEvents = 'none';
-    document.getElementById('vs-game-ui').classList.add('hidden');
-    document.getElementById('vs-game-ui').style.opacity = '0';
-    document.getElementById('vs-game-ui').style.pointerEvents = 'none';
-    document.getElementById('start-screen').classList.remove('hidden-screen');
+    ['game-over-screen', 'level-complete-screen'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden-screen');
+    });
+    ['game-ui', 'vs-game-ui'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.add('hidden');
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+        }
+    });
+    const startScreen = document.getElementById('start-screen');
+    if (startScreen) startScreen.classList.remove('hidden-screen');
     applyTheme(0);
 }
 
@@ -389,18 +414,27 @@ const ModManager = {
             id: 'adventure', name: 'Adventure', icon: 'fa-compass', color: '#ff2d55', desc: 'Reach target score',
             onInit: function () {
                 let target = getLevelTarget(currentAdventureLevel);
-                document.getElementById('timer-ui').classList.remove('hidden');
+                const timerUi = document.getElementById('timer-ui');
+                if (timerUi) timerUi.classList.remove('hidden');
                 let label = document.getElementById('time-left');
-                label.className = "flex flex-col items-center justify-center gap-1";
-                label.innerHTML = `<div class="text-6xl english-stroke text-white filter drop-shadow-lg">Level ${currentAdventureLevel}</div><div class="text-3xl english-stroke text-yellow-300 filter drop-shadow-md">Goal: ${target}</div>`;
+                if (label) {
+                    label.className = "flex flex-col items-center justify-center gap-1";
+                    label.innerHTML = `<div class="text-6xl english-stroke text-white filter drop-shadow-lg">Level ${currentAdventureLevel}</div><div class="text-3xl english-stroke text-yellow-300 filter drop-shadow-md">Goal: ${target}</div>`;
+                }
             },
             onPieceGenerated: (p) => p,
             onPlace: function () {
                 let target = getLevelTarget(currentAdventureLevel);
-                if (score >= target && document.getElementById('dock-shield').style.display !== 'block') triggerLevelComplete();
+                const shield = document.getElementById('dock-shield');
+                if (score >= target && shield && shield.style.display !== 'block') triggerLevelComplete();
             },
             onLineCleared: () => { },
-            onEnd: () => { document.getElementById('timer-ui').classList.add('hidden'); document.getElementById('time-left').innerHTML = ""; }
+            onEnd: () => {
+                const timerUi = document.getElementById('timer-ui');
+                if (timerUi) timerUi.classList.add('hidden');
+                const label = document.getElementById('time-left');
+                if (label) label.innerHTML = "";
+            }
         },
         lucky: {
             id: 'lucky', name: 'Lucky Blocks', icon: 'fa-star', color: '#ffcc00', desc: 'Mystery score bonuses!',
@@ -414,7 +448,7 @@ const ModManager = {
             },
             onPlace: () => { },
             onLineCleared: (cells) => {
-                let luckyFound = cells.filter(id => { let [r, c] = id.split(',').map(Number); return boardMeta[r][c] && boardMeta[r][c].type === 'lucky'; }).length;
+                let luckyFound = cells.filter(id => { let [r, c] = id.split(',').map(Number); return boardMeta[r] && boardMeta[r][c] && boardMeta[r][c].type === 'lucky'; }).length;
                 if (luckyFound > 0) { playTone(600, 'sine', 0.2); showFloatingText(`Lucky! +${1000 * luckyFound}`, window.innerWidth / 2, window.innerHeight / 2, "txt-super"); addSingleScore(1000 * luckyFound); applyTheme(Math.floor(Math.random() * THEMES.length)); }
             },
             onEnd: () => { }
@@ -434,20 +468,20 @@ const ModManager = {
                     let meta = boardMeta[r][c];
                     if (meta && meta.type === 'bomb') {
                         meta.timer--; if (meta.timer <= 0) exploded = true;
-                        else { let cEl = cellElements[r][c].querySelector('.bomb-counter'); if (cEl) cEl.innerText = meta.timer; }
+                        else { if (cellElements[r] && cellElements[r][c]) { let cEl = cellElements[r][c].querySelector('.bomb-counter'); if (cEl) cEl.innerText = meta.timer; } }
                     }
                 }
                 if (exploded) endSingleGame("Bomb Exploded!");
             },
             onLineCleared: (cells) => {
-                let bombFound = cells.find(id => { let [r, c] = id.split(',').map(Number); return boardMeta[r][c] && boardMeta[r][c].type === 'bomb'; });
+                let bombFound = cells.find(id => { let [r, c] = id.split(',').map(Number); return boardMeta[r] && boardMeta[r][c] && boardMeta[r][c].type === 'bomb'; });
                 if (bombFound) {
                     playTone(150, 'sawtooth', 0.5); addSingleScore(500); showFloatingText(`Boom! +500`, window.innerWidth / 2, window.innerHeight / 2, "txt-blitz");
                     let [br, bc] = bombFound.split(',').map(Number);
                     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
                         let tr = br + i, tc = bc + j;
                         if (tr >= 0 && tr < BOARD_SIZE && tc >= 0 && tc < BOARD_SIZE && boardMeta[tr][tc].color) {
-                            createPlaceParticles(cellElements[tr][tc], boardMeta[tr][tc].color);
+                            if (cellElements[tr] && cellElements[tr][tc]) createPlaceParticles(cellElements[tr][tc], boardMeta[tr][tc].color);
                             boardMeta[tr][tc] = { color: null, type: 'normal' };
                         }
                     }
@@ -459,19 +493,25 @@ const ModManager = {
             id: 'timeAttack', name: 'Time Attack', icon: 'fa-stopwatch', color: '#ff9500', desc: '3 minutes max score!',
             timeLeft: 180, interval: null,
             onInit: function () {
-                document.getElementById('timer-ui').classList.remove('hidden'); this.timeLeft = 180; this.updateUI();
+                const timerUi = document.getElementById('timer-ui');
+                if (timerUi) timerUi.classList.remove('hidden');
+                this.timeLeft = 180; this.updateUI();
                 this.interval = setInterval(() => {
-                    if (document.getElementById('dock-shield').style.display !== 'block') {
+                    const shield = document.getElementById('dock-shield');
+                    if (!shield || shield.style.display !== 'block') {
                         this.timeLeft--; this.updateUI(); if (this.timeLeft <= 0) endSingleGame("Time's Up!");
                     }
                 }, 1000);
             },
             updateUI: function () {
-                let label = document.getElementById('time-left'); label.className = "text-5xl english-stroke text-red-400 block";
-                label.innerText = `${Math.floor(this.timeLeft / 60)}:${(this.timeLeft % 60).toString().padStart(2, '0')}`;
+                let label = document.getElementById('time-left');
+                if (label) {
+                    label.className = "text-5xl english-stroke text-red-400 block";
+                    label.innerText = `${Math.floor(this.timeLeft / 60)}:${(this.timeLeft % 60).toString().padStart(2, '0')}`;
+                }
             },
             onPieceGenerated: (p) => p, onPlace: () => { }, onLineCleared: () => { },
-            onEnd: function () { clearInterval(this.interval); document.getElementById('timer-ui').classList.add('hidden'); }
+            onEnd: function () { clearInterval(this.interval); const timerUi = document.getElementById('timer-ui'); if (timerUi) timerUi.classList.add('hidden'); }
         },
         ice: {
             id: 'ice', name: 'Ice Age', icon: 'fa-snowflake', color: '#5ac8fa', desc: 'Clear twice!',
@@ -492,9 +532,16 @@ const ModManager = {
 
 // --- Menus Builders ---
 function openLevelsMenu() {
-    document.getElementById('start-screen').classList.add('hidden-screen'); document.getElementById('levels-screen').classList.remove('hidden-screen');
-    document.getElementById('unlocked-count').innerText = maxUnlockedLevel;
-    let container = document.getElementById('levels-chain-container'); container.innerHTML = '';
+    const start = document.getElementById('start-screen'), lvl = document.getElementById('levels-screen');
+    if (start) start.classList.add('hidden-screen');
+    if (lvl) lvl.classList.remove('hidden-screen');
+    
+    const countEl = document.getElementById('unlocked-count');
+    if (countEl) countEl.innerText = maxUnlockedLevel;
+
+    let container = document.getElementById('levels-chain-container');
+    if (!container) return;
+    container.innerHTML = '';
     let currentActiveNodeEl = null;
 
     for (let i = 1; i <= TOTAL_LEVELS; i++) {
@@ -513,28 +560,31 @@ function openLevelsMenu() {
                 let badge = document.createElement('div'); badge.className = 'current-tag-badge'; badge.innerText = 'Play'; btn.appendChild(badge);
                 currentActiveNodeEl = row;
             }
-            btn.onclick = () => { currentAdventureLevel = i; document.getElementById('levels-screen').classList.add('hidden-screen'); startGame('adventure'); };
+            btn.onclick = () => { currentAdventureLevel = i; if (lvl) lvl.classList.add('hidden-screen'); startGame('adventure'); };
         } else { btn.innerHTML = `<i class="fa-solid fa-lock text-gray-400"></i>`; }
         row.appendChild(btn); container.appendChild(row);
     }
     if (currentActiveNodeEl) setTimeout(() => { currentActiveNodeEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 250);
 }
 
-function returnToMenuFromLevels() { document.getElementById('levels-screen').classList.add('hidden-screen'); document.getElementById('start-screen').classList.remove('hidden-screen'); }
+function returnToMenuFromLevels() { const lvl = document.getElementById('levels-screen'), start = document.getElementById('start-screen'); if (lvl) lvl.classList.add('hidden-screen'); if (start) start.classList.remove('hidden-screen'); }
 function triggerLevelComplete() {
-    document.getElementById('dock-shield').style.display = 'block';
+    const shield = document.getElementById('dock-shield');
+    if (shield) shield.style.display = 'block';
     playTone(523.25, 'sine', 0.15); setTimeout(() => playTone(1046.50, 'sine', 0.4), 300);
     if (currentAdventureLevel === maxUnlockedLevel && maxUnlockedLevel < TOTAL_LEVELS) { maxUnlockedLevel++; localStorage.setItem('BlitzMaxLevel', maxUnlockedLevel); }
-    document.getElementById('level-final-score').innerText = score;
-    setTimeout(() => { document.getElementById('level-complete-screen').classList.remove('hidden-screen'); }, 500);
+    const finalScore = document.getElementById('level-final-score');
+    if (finalScore) finalScore.innerText = score;
+    setTimeout(() => { const screen = document.getElementById('level-complete-screen'); if (screen) screen.classList.remove('hidden-screen'); }, 500);
 }
 function startNextLevel() {
-    if (currentAdventureLevel < TOTAL_LEVELS) { currentAdventureLevel++; document.getElementById('level-complete-screen').classList.add('hidden-screen'); startGame('adventure'); }
+    if (currentAdventureLevel < TOTAL_LEVELS) { currentAdventureLevel++; const screen = document.getElementById('level-complete-screen'); if (screen) screen.classList.add('hidden-screen'); startGame('adventure'); }
     else { returnToMenu(); }
 }
 
 function openModsMenu() {
-    let container = document.getElementById('mods-grid-container'); container.innerHTML = '';
+    let container = document.getElementById('mods-grid-container'); if (!container) return;
+    container.innerHTML = '';
     Object.values(ModManager.mods).forEach(mod => {
         if (mod.id === 'classic' || mod.id === 'adventure') return;
         let high = ModManager.getHighScore(mod.id);
@@ -542,29 +592,34 @@ function openModsMenu() {
         card.innerHTML = `<i class="fa-solid ${mod.icon} mod-icon" style="color: ${mod.color}"></i><span class="mod-title">${mod.name}</span><span class="mod-desc">${mod.desc}</span><span class="mod-score english-stroke">Best: ${high}</span>`;
         card.onclick = () => { closeModsMenu(); startGame(mod.id); }; container.appendChild(card);
     });
-    document.getElementById('start-screen').classList.add('hidden-screen'); document.getElementById('mods-screen').classList.remove('hidden-screen');
+    const start = document.getElementById('start-screen'), mods = document.getElementById('mods-screen');
+    if (start) start.classList.add('hidden-screen'); if (mods) mods.classList.remove('hidden-screen');
 }
-function closeModsMenu() { document.getElementById('mods-screen').classList.add('hidden-screen'); document.getElementById('start-screen').classList.remove('hidden-screen'); }
+function closeModsMenu() { const mods = document.getElementById('mods-screen'), start = document.getElementById('start-screen'); if (mods) mods.classList.add('hidden-screen'); if (start) start.classList.remove('hidden-screen'); }
 
 // ==========================================
 // Single Player Engine (Classic/Adventure/Mods)
 // ==========================================
 function startGame(modId) {
     initAudio(); isVsMode = false; activeMod = ModManager.mods[modId];
-    document.getElementById('start-screen').classList.add('hidden-screen');
-    document.getElementById('game-ui').classList.remove('hidden'); document.getElementById('game-ui').style.opacity = '1'; document.getElementById('game-ui').style.pointerEvents = 'auto';
+    const start = document.getElementById('start-screen'), gameUi = document.getElementById('game-ui');
+    if (start) start.classList.add('hidden-screen');
+    if (gameUi) { gameUi.classList.remove('hidden'); gameUi.style.opacity = '1'; gameUi.style.pointerEvents = 'auto'; }
 
     score = 0; comboCount = 0; updateScoreDisplay();
 
     const targetLabelEl = document.getElementById('high-score-label');
-    if (activeMod.id === 'adventure') { document.getElementById('high-score').innerText = getLevelTarget(currentAdventureLevel); if (targetLabelEl) targetLabelEl.innerText = "Goal"; }
-    else { document.getElementById('high-score').innerText = ModManager.getHighScore(activeMod.id); if (targetLabelEl) targetLabelEl.innerText = "Best Score"; }
+    const highScoreEl = document.getElementById('high-score');
+    if (activeMod.id === 'adventure') { if (highScoreEl) highScoreEl.innerText = getLevelTarget(currentAdventureLevel); if (targetLabelEl) targetLabelEl.innerText = "Goal"; }
+    else { if (highScoreEl) highScoreEl.innerText = ModManager.getHighScore(activeMod.id); if (targetLabelEl) targetLabelEl.innerText = "Best Score"; }
 
     boardMeta = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill().map(() => ({ color: null, type: 'normal' })));
-    renderBoard(document.getElementById('game-board'), boardMeta, cellElements);
+    const boardEl = document.getElementById('game-board');
+    if (boardEl) renderBoard(boardEl, boardMeta, cellElements);
 
     dockPieces = [null, null, null]; fillDock('slot', dockPieces);
-    document.getElementById('dock-shield').style.display = 'block';
+    const shield = document.getElementById('dock-shield');
+    if (shield) shield.style.display = 'block';
 
     setTimeout(() => { playDynamicIntroSequence(); }, 50);
 }
@@ -573,23 +628,29 @@ async function playDynamicIntroSequence() {
     let color = COLOR_ARRAY[Math.floor(Math.random() * COLOR_ARRAY.length)];
     let shape = INTRO_SHAPES[0];
     for (let r = 0; r < BOARD_SIZE; r++) for (let c = 0; c < BOARD_SIZE; c++) if (shape[r][c] === '1') boardMeta[r][c] = { color: color, type: 'normal' };
-    renderBoard(document.getElementById('game-board'), boardMeta, cellElements);
+    const boardEl = document.getElementById('game-board');
+    if (boardEl) renderBoard(boardEl, boardMeta, cellElements);
 
     for (let i = 0; i < 3; i++) { setTimeout(() => playTone(300 + (i * 150), 'sine', 0.15), i * 150); }
     await new Promise(res => setTimeout(res, 600));
 
     playTone(800, 'triangle', 0.3);
     for (let r = 0; r < BOARD_SIZE; r++) for (let c = 0; c < BOARD_SIZE; c++) if (boardMeta[r][c].color) {
-        let b = cellElements[r][c].querySelector('.block'); if (b) b.classList.add('blasting');
-        createPlaceParticles(cellElements[r][c], boardMeta[r][c].color); boardMeta[r][c] = { color: null, type: 'normal' };
+        if (cellElements[r] && cellElements[r][c]) {
+            let b = cellElements[r][c].querySelector('.block'); if (b) b.classList.add('blasting');
+            createPlaceParticles(cellElements[r][c], boardMeta[r][c].color);
+        }
+        boardMeta[r][c] = { color: null, type: 'normal' };
     }
     await new Promise(res => setTimeout(res, 300));
 
     if (activeMod.id === 'adventure') {
-        boardMeta = getAdventureLayout(currentAdventureLevel); renderBoard(document.getElementById('game-board'), boardMeta, cellElements);
+        boardMeta = getAdventureLayout(currentAdventureLevel);
+        if (boardEl) renderBoard(boardEl, boardMeta, cellElements);
         let count = 0;
         for (let r = 0; r < BOARD_SIZE; r++) for (let c = 0; c < BOARD_SIZE; c++) if (boardMeta[r][c].color) {
-            createPlaceParticles(cellElements[r][c], boardMeta[r][c].color); count++; setTimeout(() => playTone(600 + count * 20, 'sine', 0.04), count * 35);
+            if (cellElements[r] && cellElements[r][c]) createPlaceParticles(cellElements[r][c], boardMeta[r][c].color);
+            count++; setTimeout(() => playTone(600 + count * 20, 'sine', 0.04), count * 35);
         }
     } else {
         let blocksToScatter = [4, 10][Math.floor(Math.random() * 2)];
@@ -597,17 +658,19 @@ async function playDynamicIntroSequence() {
             let r = Math.floor(Math.random() * BOARD_SIZE); let c = Math.floor(Math.random() * BOARD_SIZE);
             if (!boardMeta[r][c].color) {
                 boardMeta[r][c] = { color: COLOR_ARRAY[Math.floor(Math.random() * COLOR_ARRAY.length)], type: 'normal' };
-                createPlaceParticles(cellElements[r][c], boardMeta[r][c].color); playTone(600 + i * 30, 'sine', 0.05);
+                if (cellElements[r] && cellElements[r][c]) createPlaceParticles(cellElements[r][c], boardMeta[r][c].color);
+                playTone(600 + i * 30, 'sine', 0.05);
             }
         }
-        renderBoard(document.getElementById('game-board'), boardMeta, cellElements);
+        if (boardEl) renderBoard(boardEl, boardMeta, cellElements);
     }
 
-    activeMod.onInit();
+    if (activeMod) activeMod.onInit();
     await new Promise(res => setTimeout(res, 200));
     dockPieces = [generateSmartPiece(boardMeta, false), generateSmartPiece(boardMeta, false), generateSmartPiece(boardMeta, false)];
     fillDock('slot', dockPieces);
-    document.getElementById('dock-shield').style.display = 'none';
+    const shield = document.getElementById('dock-shield');
+    if (shield) shield.style.display = 'none';
 }
 
 // ==========================================
@@ -615,22 +678,24 @@ async function playDynamicIntroSequence() {
 // ==========================================
 function startVsMode(diff) {
     initAudio(); robotDifficulty = diff; isVsMode = true; activeMod = null;
-    document.getElementById('robot-menu').classList.add('hidden-screen');
+    const robotMenu = document.getElementById('robot-menu');
+    if (robotMenu) robotMenu.classList.add('hidden-screen');
 
     const cdScreen = document.getElementById('countdown-screen'); const cdText = document.getElementById('countdown-text');
-    cdScreen.classList.remove('hidden-screen');
-    let count = 3; cdText.innerText = count; playTone(400, 'square', 0.2);
+    if (cdScreen) cdScreen.classList.remove('hidden-screen');
+    let count = 3; if (cdText) cdText.innerText = count; playTone(400, 'square', 0.2);
 
     let iv = setInterval(() => {
         count--;
-        if (count > 0) { cdText.innerText = count; playTone(400, 'square', 0.2); }
-        else if (count === 0) { cdText.innerText = "GO!"; cdText.style.color = "#4cd964"; playTone(800, 'square', 0.4); }
-        else { clearInterval(iv); cdScreen.classList.add('hidden-screen'); cdText.style.color = "white"; initVsGameplay(); }
+        if (count > 0) { if (cdText) cdText.innerText = count; playTone(400, 'square', 0.2); }
+        else if (count === 0) { if (cdText) { cdText.innerText = "GO!"; cdText.style.color = "#4cd964"; } playTone(800, 'square', 0.4); }
+        else { clearInterval(iv); if (cdScreen) cdScreen.classList.add('hidden-screen'); if (cdText) cdText.style.color = "white"; initVsGameplay(); }
     }, 1000);
 }
 
 function initVsGameplay() {
-    document.getElementById('vs-game-ui').classList.remove('hidden'); document.getElementById('vs-game-ui').style.opacity = '1'; document.getElementById('vs-game-ui').style.pointerEvents = 'auto';
+    const vsUi = document.getElementById('vs-game-ui');
+    if (vsUi) { vsUi.classList.remove('hidden'); vsUi.style.opacity = '1'; vsUi.style.pointerEvents = 'auto'; }
 
     vsPlayerScore = 0; vsRobotScore = 0; updateVsScores();
 
@@ -638,25 +703,34 @@ function initVsGameplay() {
     vsRobotMeta = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill().map(() => ({ color: null, type: 'normal' })));
 
     vsPlayerCells = []; vsRobotCells = [];
-    renderBoard(document.getElementById('vs-player-board'), vsPlayerMeta, vsPlayerCells);
-    renderBoard(document.getElementById('vs-robot-board'), vsRobotMeta, vsRobotCells);
+    const pBoard = document.getElementById('vs-player-board');
+    const rBoard = document.getElementById('vs-robot-board');
+    if (pBoard) renderBoard(pBoard, vsPlayerMeta, vsPlayerCells);
+    if (rBoard) renderBoard(rBoard, vsRobotMeta, vsRobotCells);
 
     vsPlayerDock = [generateSmartPiece(vsPlayerMeta, true), generateSmartPiece(vsPlayerMeta, true), generateSmartPiece(vsPlayerMeta, true)];
     vsRobotDock = [generateSmartPiece(vsRobotMeta, true), generateSmartPiece(vsRobotMeta, true), generateSmartPiece(vsRobotMeta, true)];
 
-    fillDock('vs-slot', vsPlayerDock); document.getElementById('vs-dock-shield').style.display = 'none';
+    fillDock('vs-slot', vsPlayerDock);
+    const shield = document.getElementById('vs-dock-shield');
+    if (shield) shield.style.display = 'none';
     triggerRobotTurn();
 }
 
 function updateVsScores() {
-    document.getElementById('top-player-score').innerText = vsPlayerScore;
-    document.getElementById('top-robot-score').innerText = vsRobotScore;
+    const topPlayer = document.getElementById('top-player-score');
+    const topRobot = document.getElementById('top-robot-score');
+    if (topPlayer) topPlayer.innerText = vsPlayerScore;
+    if (topRobot) topRobot.innerText = vsRobotScore;
 
-    const pScore = document.getElementById('top-player-score');
-    pScore.classList.remove('score-shake'); void pScore.offsetWidth; pScore.classList.add('score-shake');
+    if (topPlayer) {
+        topPlayer.classList.remove('score-shake'); void topPlayer.offsetWidth; topPlayer.classList.add('score-shake');
+    }
 
-    document.getElementById('player-progress').style.width = Math.min(100, (vsPlayerScore / TARGET_VS_SCORE) * 100) + '%';
-    document.getElementById('robot-progress').style.width = Math.min(100, (vsRobotScore / TARGET_VS_SCORE) * 100) + '%';
+    const pProg = document.getElementById('player-progress');
+    const rProg = document.getElementById('robot-progress');
+    if (pProg) pProg.style.width = Math.min(100, (vsPlayerScore / TARGET_VS_SCORE) * 100) + '%';
+    if (rProg) rProg.style.width = Math.min(100, (vsRobotScore / TARGET_VS_SCORE) * 100) + '%';
 }
 
 function triggerRobotTurn() {
@@ -683,7 +757,8 @@ function executeRobotMove() {
         if (vsRobotScore >= TARGET_VS_SCORE) { endVsGame("Robot Wins!", vsRobotScore, "red"); return; }
     } else {
         vsRobotMeta = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill().map(() => ({ color: null, type: 'normal' })));
-        renderBoard(document.getElementById('vs-robot-board'), vsRobotMeta, vsRobotCells);
+        const rBoard = document.getElementById('vs-robot-board');
+        if (rBoard) renderBoard(rBoard, vsRobotMeta, vsRobotCells);
         vsRobotDock = [generateSmartPiece(vsRobotMeta, true), generateSmartPiece(vsRobotMeta, true), generateSmartPiece(vsRobotMeta, true)];
     }
     triggerRobotTurn();
@@ -728,6 +803,7 @@ function getActiveDock() { return isVsMode ? vsPlayerDock : dockPieces; }
 function getActiveDockPrefix() { return isVsMode ? 'vs-slot' : 'slot'; }
 
 function renderBoard(containerEl, dataArray, cellsArray) {
+    if (!containerEl) return;
     containerEl.innerHTML = ''; cellsArray.length = 0;
     for (let r = 0; r < BOARD_SIZE; r++) {
         let rowEls = [];
@@ -780,7 +856,7 @@ function createPieceDOM(piece, isDock) {
     const cont = document.createElement('div'); cont.className = 'piece-container';
     const r = piece.matrix.length, c = piece.matrix[0].length;
     cont.style.gridTemplateColumns = `repeat(${c}, 1fr)`; cont.style.gridTemplateRows = `repeat(${r}, 1fr)`;
-    const sz = isDock ? (isVsMode ? 20 : 24) : boardCellSize;
+    const sz = isDock ? (isVsMode ? 20 : 24) : (boardCellSize || 30);
     cont.style.width = `${c * sz + (c - 1) * 2}px`;
     for (let i = 0; i < r; i++) {
         for (let j = 0; j < c; j++) {
@@ -828,12 +904,14 @@ function startDrag(e, index, dockArr, prefix) {
     dragElement.classList.add('piece-pickup-anim');
     playTone(600, 'triangle', 0.1);
 
-    document.getElementById('drag-layer').appendChild(dragElement);
+    const dragLayer = document.getElementById('drag-layer');
+    if (dragLayer) dragLayer.appendChild(dragElement);
 
-    dragOffsetX = (dragPieceObj.matrix[0].length * boardCellSize) / 2;
-    dragOffsetY = isVsMode ? (dragPieceObj.matrix.length * boardCellSize) + 20 : (dragPieceObj.matrix.length * boardCellSize) + 50;
+    dragOffsetX = (dragPieceObj.matrix[0].length * (boardCellSize || 30)) / 2;
+    dragOffsetY = isVsMode ? (dragPieceObj.matrix.length * (boardCellSize || 30)) + 20 : (dragPieceObj.matrix.length * (boardCellSize || 30)) + 50;
 
-    document.getElementById(`${prefix}-${index}`).classList.add('hidden-piece');
+    const slotEl = document.getElementById(`${prefix}-${index}`);
+    if (slotEl) slotEl.classList.add('hidden-piece');
     updateDragPosition(clientX, clientY);
 }
 
@@ -842,10 +920,14 @@ function onMove(e) {
     let clientX = e.touches ? e.touches[0].clientX : e.clientX, clientY = e.touches ? e.touches[0].clientY : e.clientY;
     updateDragPosition(clientX, clientY);
 
-    const rect = getActiveBoardEl().getBoundingClientRect();
+    const activeEl = getActiveBoardEl();
+    if (!activeEl) return;
+
+    const rect = activeEl.getBoundingClientRect();
     let gap = isVsMode ? 1 : 2;
-    let gX = Math.round(((clientX - dragOffsetX) - rect.left) / (boardCellSize + gap));
-    let gY = Math.round(((clientY - dragOffsetY) - rect.top) / (boardCellSize + gap));
+    let effectiveCell = boardCellSize || (rect.width / BOARD_SIZE);
+    let gX = Math.round(((clientX - dragOffsetX) - rect.left) / (effectiveCell + gap));
+    let gY = Math.round(((clientY - dragOffsetY) - rect.top) / (effectiveCell + gap));
 
     let maxColOffset = BOARD_SIZE - dragPieceObj.matrix[0].length, maxRowOffset = BOARD_SIZE - dragPieceObj.matrix.length;
 
@@ -870,15 +952,19 @@ function onEnd(e) {
         showFloatingText(`+${baseScore}`, clientX, clientY - 30, "txt-addscore");
 
         let activeEl = getActiveBoardEl();
-        activeEl.classList.remove('board-shake');
-        void activeEl.offsetWidth;
-        activeEl.classList.add('board-shake');
+        if (activeEl) {
+            activeEl.classList.remove('board-shake');
+            void activeEl.offsetWidth;
+            activeEl.classList.add('board-shake');
+        }
         createShockwave(clientX, clientY);
         playTone(200, 'square', 0.15);
 
         placePieceOnData(meta, cells, dragPieceObj, hoverGridY, hoverGridX, true);
 
-        dock[dragSlotIndex] = null; document.getElementById(`${prefix}-${dragSlotIndex}`).innerHTML = '';
+        dock[dragSlotIndex] = null;
+        const slotEl = document.getElementById(`${prefix}-${dragSlotIndex}`);
+        if (slotEl) { slotEl.innerHTML = ''; slotEl.classList.remove('hidden-piece'); }
 
         let cleared = checkLinesOnData(meta, cells, true); let totalGained = baseScore + cleared.score;
 
@@ -893,9 +979,14 @@ function onEnd(e) {
             if (dock.every(p => p === null)) { dockPieces = [generateSmartPiece(boardMeta, false), generateSmartPiece(boardMeta, false), generateSmartPiece(boardMeta, false)]; fillDock('slot', dockPieces); }
             else checkGameOverSingle();
         }
-    } else { document.getElementById(`${prefix}-${dragSlotIndex}`).classList.remove('hidden-piece'); }
+    } else {
+        const slotEl = document.getElementById(`${prefix}-${dragSlotIndex}`);
+        if (slotEl) slotEl.classList.remove('hidden-piece');
+    }
 
-    document.getElementById('drag-layer').innerHTML = ''; dragElement = null; dragPieceObj = null; hoverGridX = -1; hoverGridY = -1; clearGhost();
+    const dragLayer = document.getElementById('drag-layer');
+    if (dragLayer) dragLayer.innerHTML = '';
+    dragElement = null; dragPieceObj = null; hoverGridX = -1; hoverGridY = -1; clearGhost();
 }
 
 document.addEventListener('mousemove', onMove, { passive: false }); document.addEventListener('touchmove', onMove, { passive: false });
@@ -904,7 +995,7 @@ document.addEventListener('mouseup', onEnd); document.addEventListener('touchend
 // --- Core Rules ---
 function canPlaceOnData(dataArray, piece, r, c) {
     for (let i = 0; i < piece.matrix.length; i++) for (let j = 0; j < piece.matrix[0].length; j++) if (piece.matrix[i][j]) {
-        let tr = r + i, tc = c + j; if (tr < 0 || tr >= BOARD_SIZE || tc < 0 || tc >= BOARD_SIZE || dataArray[tr][tc].color) return false;
+        let tr = r + i, tc = c + j; if (tr < 0 || tr >= BOARD_SIZE || tc < 0 || tc >= BOARD_SIZE || !dataArray[tr] || !dataArray[tr][tc] || dataArray[tr][tc].color) return false;
     } return true;
 }
 
@@ -915,21 +1006,25 @@ function renderGhost() {
 
     for (let i = 0; i < dragPieceObj.matrix.length; i++) for (let j = 0; j < dragPieceObj.matrix[0].length; j++) if (dragPieceObj.matrix[i][j]) {
         let tr = hoverGridY + i, tc = hoverGridX + j;
-        if (tr >= 0 && tr < BOARD_SIZE && tc >= 0 && tc < BOARD_SIZE) if (valid) cells[tr][tc].innerHTML = `<div class="block ghost-valid" style="background-color: ${dragPieceObj.color}; opacity: 0.5;"></div>`;
+        if (tr >= 0 && tr < BOARD_SIZE && tc >= 0 && tc < BOARD_SIZE && cells[tr] && cells[tr][tc]) {
+            if (valid) cells[tr][tc].innerHTML = `<div class="block ghost-valid" style="background-color: ${dragPieceObj.color}; opacity: 0.5;"></div>`;
+        }
     }
     if (valid) {
         let tempBoard = meta.map(row => row.map(cell => cell.color ? true : false));
         for (let i = 0; i < dragPieceObj.matrix.length; i++) for (let j = 0; j < dragPieceObj.matrix[0].length; j++) if (dragPieceObj.matrix[i][j]) tempBoard[hoverGridY + i][hoverGridX + j] = true;
-        for (let r = 0; r < BOARD_SIZE; r++) if (tempBoard[r].every(c => c)) for (let c = 0; c < BOARD_SIZE; c++) cells[r][c].classList.add('line-clear-preview');
-        for (let c = 0; c < BOARD_SIZE; c++) if (tempBoard.every(row => row[c])) for (let r = 0; r < BOARD_SIZE; r++) cells[r][c].classList.add('line-clear-preview');
+        for (let r = 0; r < BOARD_SIZE; r++) if (tempBoard[r].every(c => c)) for (let c = 0; c < BOARD_SIZE; c++) { if (cells[r] && cells[r][c]) cells[r][c].classList.add('line-clear-preview'); }
+        for (let c = 0; c < BOARD_SIZE; c++) if (tempBoard.every(row => row[c])) for (let r = 0; r < BOARD_SIZE; r++) { if (cells[r] && cells[r][c]) cells[r][c].classList.add('line-clear-preview'); }
     }
 }
 
 function clearGhost() {
     let cells = getActiveCells(); let meta = getActiveMeta(); if (!cells || cells.length === 0) return;
     for (let r = 0; r < BOARD_SIZE; r++) for (let c = 0; c < BOARD_SIZE; c++) {
-        cells[r][c].classList.remove('line-clear-preview');
-        if (!meta[r][c].color) cells[r][c].innerHTML = '';
+        if (cells[r] && cells[r][c]) {
+            cells[r][c].classList.remove('line-clear-preview');
+            if (meta[r] && meta[r][c] && !meta[r][c].color) cells[r][c].innerHTML = '';
+        }
     }
 }
 
@@ -940,13 +1035,14 @@ function placePieceOnData(dataArray, cellsArray, piece, row, col, isHuman) {
                 let tr = row + i, tc = col + j;
                 let customMeta = (piece.meta && piece.meta[`${i},${j}`]) ? piece.meta[`${i},${j}`] : { type: 'normal' };
                 dataArray[tr][tc] = { color: piece.color, ...customMeta };
-                if (isHuman) {
+                if (isHuman && cellsArray[tr] && cellsArray[tr][tc]) {
                     createPlaceParticles(cellsArray[tr][tc], piece.color, 4);
                 }
             }
         }
     }
-    renderBoard(isHuman && isVsMode ? document.getElementById('vs-player-board') : (isVsMode ? document.getElementById('vs-robot-board') : document.getElementById('game-board')), dataArray, cellsArray);
+    const targetBoard = isHuman && isVsMode ? document.getElementById('vs-player-board') : (isVsMode ? document.getElementById('vs-robot-board') : document.getElementById('game-board'));
+    if (targetBoard) renderBoard(targetBoard, dataArray, cellsArray);
 }
 
 function checkLinesOnData(dataArray, cellsArray, isHuman) {
@@ -971,7 +1067,7 @@ function checkLinesOnData(dataArray, cellsArray, isHuman) {
             if (totalLines >= 4) { textWord = "BLITZ!"; textClass = "txt-blitz"; }
 
             const container = isVsMode ? document.getElementById('vs-floating-container') : document.getElementById('floating-text-container');
-            showFloatingText(textWord, window.innerWidth / 2, window.innerHeight / 2 - 50, textClass, container);
+            showFloatingText(textWord, window.innerWidth / 2, window.innerHeight / 2 - 50, textClass, container || document.body);
         }
 
         let cellsToBlast = new Set();
@@ -981,16 +1077,21 @@ function checkLinesOnData(dataArray, cellsArray, isHuman) {
         if (isHuman && !isVsMode && activeMod) activeMod.onLineCleared(Array.from(cellsToBlast));
 
         cellsToBlast.forEach(id => {
-            let [r, c] = id.split(',').map(Number); let meta = dataArray[r][c]; if (!meta.color) return;
-            if (meta.hp && meta.hp > 1) { meta.hp--; if (isHuman) createPlaceParticles(cellsArray[r][c], meta.color, 3); }
+            let [r, c] = id.split(',').map(Number); let meta = dataArray[r][c]; if (!meta || !meta.color) return;
+            if (meta.hp && meta.hp > 1) { meta.hp--; if (isHuman && cellsArray[r] && cellsArray[r][c]) createPlaceParticles(cellsArray[r][c], meta.color, 3); }
             else {
-                if (isHuman) createPlaceParticles(cellsArray[r][c], meta.color, 3);
-                let blockInside = cellsArray[r][c].querySelector('.block'); if (blockInside) blockInside.classList.add('blasting');
+                if (isHuman && cellsArray[r] && cellsArray[r][c]) createPlaceParticles(cellsArray[r][c], meta.color, 3);
+                if (cellsArray[r] && cellsArray[r][c]) {
+                    let blockInside = cellsArray[r][c].querySelector('.block'); if (blockInside) blockInside.classList.add('blasting');
+                }
                 dataArray[r][c] = { color: null, type: 'normal' };
             }
         });
 
-        setTimeout(() => { renderBoard(isHuman && isVsMode ? document.getElementById('vs-player-board') : (isVsMode ? document.getElementById('vs-robot-board') : document.getElementById('game-board')), dataArray, cellsArray); }, 300);
+        setTimeout(() => {
+            const targetBoard = isHuman && isVsMode ? document.getElementById('vs-player-board') : (isVsMode ? document.getElementById('vs-robot-board') : document.getElementById('game-board'));
+            if (targetBoard) renderBoard(targetBoard, dataArray, cellsArray);
+        }, 300);
     } else { if (isHuman) comboCount = 0; }
     return { lines: totalLines, score: scoreToAdd };
 }
@@ -998,11 +1099,21 @@ function checkLinesOnData(dataArray, cellsArray, isHuman) {
 // --- Visual Effects & Scores ---
 function addSingleScore(amount) {
     score += amount; updateScoreDisplay();
-    if (activeMod && activeMod.id !== 'adventure') { let best = ModManager.getHighScore(activeMod.id); if (score > best) { ModManager.setHighScore(activeMod.id, score); document.getElementById('high-score').innerText = score; } }
+    if (activeMod && activeMod.id !== 'adventure') {
+        let best = ModManager.getHighScore(activeMod.id);
+        if (score > best) {
+            ModManager.setHighScore(activeMod.id, score);
+            const highEl = document.getElementById('high-score');
+            if (highEl) highEl.innerText = score;
+        }
+    }
 }
 function updateScoreDisplay() {
-    const scoreEl = document.getElementById('current-score'); scoreEl.innerText = score;
-    scoreEl.classList.remove('score-shake'); void scoreEl.offsetWidth; scoreEl.classList.add('score-shake');
+    const scoreEl = document.getElementById('current-score');
+    if (scoreEl) {
+        scoreEl.innerText = score;
+        scoreEl.classList.remove('score-shake'); void scoreEl.offsetWidth; scoreEl.classList.add('score-shake');
+    }
 }
 
 function createPlaceParticles(cellElement, color, density = 3) {
@@ -1015,16 +1126,21 @@ function createPlaceParticles(cellElement, color, density = 3) {
     }
 }
 function showFloatingText(text, x, y, className, container = document.body) {
-    const el = document.createElement('div'); el.className = `floating-text ${className}`; el.innerText = text; el.style.left = `${x}px`; el.style.top = `${y}px`; container.appendChild(el); setTimeout(() => el.remove(), 1200);
+    const el = document.createElement('div'); el.className = `floating-text ${className}`; el.innerText = text; el.style.left = `${x}px`; el.style.top = `${y}px`; (container || document.body).appendChild(el); setTimeout(() => el.remove(), 1200);
 }
 
 // --- Game Overs ---
 function endSingleGame(reasonStr) {
-    document.getElementById('dock-shield').style.display = 'block';
+    const shield = document.getElementById('dock-shield');
+    if (shield) shield.style.display = 'block';
     playTone(300, 'sawtooth', 0.3); setTimeout(() => playTone(250, 'sawtooth', 0.3), 200); setTimeout(() => playTone(200, 'sawtooth', 0.5), 400);
-    document.getElementById('game-over-title').innerText = reasonStr; document.getElementById('game-over-title').className = "text-6xl bold-stroke mb-2 text-red-500";
-    document.getElementById('game-over-sub').innerText = "Final Score"; document.getElementById('final-score').innerText = score;
-    setTimeout(() => { document.getElementById('game-over-screen').classList.remove('hidden-screen'); }, 800);
+    const titleEl = document.getElementById('game-over-title');
+    if (titleEl) { titleEl.innerText = reasonStr; titleEl.className = "text-6xl bold-stroke mb-2 text-red-500"; }
+    const subEl = document.getElementById('game-over-sub');
+    if (subEl) subEl.innerText = "Final Score";
+    const scoreEl = document.getElementById('final-score');
+    if (scoreEl) scoreEl.innerText = score;
+    setTimeout(() => { const screen = document.getElementById('game-over-screen'); if (screen) screen.classList.remove('hidden-screen'); }, 800);
 }
 
 function checkGameOverSingle() {
@@ -1038,10 +1154,16 @@ function checkGameOverSingle() {
 }
 
 function endVsGame(title, finalScore, colorClass) {
-    isVsMode = false; clearTimeout(robotTurnTimeout); document.getElementById('vs-dock-shield').style.display = 'block';
-    document.getElementById('game-over-title').innerText = title; document.getElementById('game-over-title').className = `text-6xl bold-stroke mb-2 text-${colorClass}-500`;
-    document.getElementById('game-over-sub').innerText = "Score Achieved"; document.getElementById('final-score').innerText = finalScore;
-    setTimeout(() => { document.getElementById('game-over-screen').classList.remove('hidden-screen'); }, 1000);
+    isVsMode = false; clearTimeout(robotTurnTimeout);
+    const shield = document.getElementById('vs-dock-shield');
+    if (shield) shield.style.display = 'block';
+    const titleEl = document.getElementById('game-over-title');
+    if (titleEl) { titleEl.innerText = title; titleEl.className = `text-6xl bold-stroke mb-2 text-${colorClass}-500`; }
+    const subEl = document.getElementById('game-over-sub');
+    if (subEl) subEl.innerText = "Score Achieved";
+    const finalEl = document.getElementById('final-score');
+    if (finalEl) finalEl.innerText = finalScore;
+    setTimeout(() => { const screen = document.getElementById('game-over-screen'); if (screen) screen.classList.remove('hidden-screen'); }, 1000);
 }
 
 function checkGameOverVsPlayer() {
@@ -1054,7 +1176,8 @@ function checkGameOverVsPlayer() {
     if (vsPlayerDock.some(p => p !== null) && !canPlaceAny) {
         playTone(150, 'sawtooth', 0.5); vsPlayerMeta = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill().map(() => ({ color: null, type: 'normal' })));
         vsPlayerScore = Math.max(0, vsPlayerScore - 200); updateVsScores(); showFloatingText("-200 Penalty!", window.innerWidth / 2, window.innerHeight / 2, "txt-blitz");
-        renderBoard(document.getElementById('vs-player-board'), vsPlayerMeta, vsPlayerCells);
+        const pBoard = document.getElementById('vs-player-board');
+        if (pBoard) renderBoard(pBoard, vsPlayerMeta, vsPlayerCells);
         vsPlayerDock = [generateSmartPiece(vsPlayerMeta, true), generateSmartPiece(vsPlayerMeta, true), generateSmartPiece(vsPlayerMeta, true)]; fillDock('vs-slot', vsPlayerDock);
     }
 }
