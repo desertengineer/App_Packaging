@@ -610,3 +610,24 @@ jobs:
           rm -f "$RUNNER_TEMP/certificate.p12"
           rm -f "$RUNNER_TEMP/profile.mobileprovision"
           rm -f "$RUNNER_TEMP/profile.plist"
+      
+          - name: Verify AdMob pod Swift settings
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          settings="$RUNNER_TEMP/admob-pod-build-settings.txt"
+
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -showBuildSettings \
+            > "$settings"
+
+          echo "Relevant build settings:"
+          grep -E \
+            "SWIFT_VERSION|SWIFT_STRICT_CONCURRENCY|IPHONEOS_DEPLOYMENT_TARGET|TARGET_NAME" \
+            "$settings" || true
