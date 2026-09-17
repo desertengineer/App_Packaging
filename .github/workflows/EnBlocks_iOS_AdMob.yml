@@ -1,700 +1,92 @@
-name: EnBlocks - iOS App Store
+name: EnBlocks iOS AdMob Build
 
 on:
   workflow_dispatch:
-    inputs:
-      build_notes:
-        description: "Build notes / TestFlight release description"
-        required: false
-        default: "Manual TestFlight build"
-        type: string
+  push:
+    branches:
+      - main
 
-permissions:
-  contents: read
-
-concurrency:
-  group: enblocks-ios-release
-  cancel-in-progress: false
+env:
+  NODE_VERSION: 22
+  IOS_DEPLOYMENT_TARGET: "15.0"
+  APP_NAME: "Magic Block Blitz 2026"
+  BUNDLE_ID: ${{ secrets.BUNDLE_ID }}
+  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+  CERTIFICATE_P12_BASE64: ${{ secrets.CERTIFICATE_P12_BASE64 }}
+  CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+  PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+  KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD || 'temp1234' }}
 
 jobs:
-  build-ios:
-    name: Build and upload EnBlocks iOS app
+  ios-build:
     runs-on: macos-15
-    environment: MagicBlockBlitz-Environment
-    timeout-minutes: 60
-
-    env:
-      NODE_VERSION: "22"
-      IOS_DEPLOYMENT_TARGET: "15.0"
-      APP_VERSION: "1.0.4"
-
-      BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
-      APP_NAME: ${{ vars.APP_NAME || 'Magic Block Blitz 2026' }}
-      XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
-      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID || secrets.APPLE_TEAM_ID }}
-
-      ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
-      ADMOB_APP_OPEN_AD_ID: ${{ secrets.ADMOB_APP_OPEN_AD_ID }}
-      ADMOB_BANNER_AD_ID: ${{ secrets.ADMOB_BANNER_AD_ID }}
-      ADMOB_INTERSTITIAL_AD_ID: ${{ secrets.ADMOB_INTERSTITIAL_AD_ID }}
-      ADMOB_NATIVE_ADVANCED_AD_ID: ${{ secrets.ADMOB_NATIVE_ADVANCED_AD_ID }}
-      ADMOB_REWARDED_AD_ID: ${{ secrets.ADMOB_REWARDED_AD_ID }}
-      ADMOB_REWARDED_INTERSTITIAL_AD_ID: ${{ secrets.ADMOB_REWARDED_INTERSTITIAL_AD_ID }}
-
-      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
 
     steps:
-      # ============================================================
-      # 1. Checkout
-      # ============================================================
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      # ============================================================
-      # 2. Locate EnBlocks
-      # ============================================================
-      - name: Locate EnBlocks project
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          configured_dir="${{ vars.MONOREPO_DIRECTORY || 'EnBlocks' }}"
-          configured_dir="${configured_dir%/}"
-
-          if [[ -f "$configured_dir/package.json" ]]; then
-            target_dir="$configured_dir"
-          elif [[ -f "EnBlocks/package.json" ]]; then
-            target_dir="EnBlocks"
-          elif [[ -f "package.json" && -d "ios/App" ]]; then
-            target_dir="."
-          else
-            echo "::error::Could not locate the EnBlocks project."
-            exit 1
-          fi
-
-          target_dir="$(cd "$target_dir" && pwd)"
-
-          echo "TARGET_DIR=$target_dir" >> "$GITHUB_ENV"
-          echo "Using project directory: $target_dir"
-
-      # ============================================================
-      # 3. Validate configuration
-      # ============================================================
-      - name: Validate release configuration
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          : "${APPLE_TEAM_ID:?Missing APPLE_TEAM_ID}"
-          : "${BUNDLE_ID:?Missing BUNDLE_IDENTIFIER}"
-          : "${XCODE_SCHEME:?Missing XCODE_SCHEME}"
-
-          : "${ADMOB_APP_ID:?Missing ADMOB_APP_ID}"
-          : "${ADMOB_BANNER_AD_ID:?Missing ADMOB_BANNER_AD_ID}"
-          : "${ADMOB_INTERSTITIAL_AD_ID:?Missing ADMOB_INTERSTITIAL_AD_ID}"
-          : "${ADMOB_REWARDED_AD_ID:?Missing ADMOB_REWARDED_AD_ID}"
-
-          echo "Bundle ID: $BUNDLE_ID"
-          echo "Xcode scheme: $XCODE_SCHEME"
-          echo "Apple Team ID is configured."
-
-      # ============================================================
-      # 4. Validate project structure
-      # ============================================================
-      - name: Validate EnBlocks project structure
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          cd "$TARGET_DIR"
-
-          required_paths=(
-            "package.json"
-            "package-lock.json"
-            "capacitor.config.json"
-            "www/index.html"
-            "www/index.js"
-            "www/admob-config.js"
-            "ios/App/App.xcworkspace"
-            "ios/App/App.xcodeproj"
-            "ios/App/Podfile"
-            "ios/App/Podfile.lock"
-            "ios/App/App/Info.plist"
-          )
-
-          for path in "${required_paths[@]}"; do
-            if [[ ! -e "$path" ]]; then
-              echo "::error::Missing required path: $TARGET_DIR/$path"
-              exit 1
-            fi
-          done
-
-          echo "Project structure is valid."
-
-      # ============================================================
-      # 5. Node.js
-      # ============================================================
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: ${{ env.TARGET_DIR }}/package-lock.json
 
-      # ============================================================
-      # 6. Install JavaScript dependencies
-      # ============================================================
-      - name: Install JavaScript dependencies
-        working-directory: ${{ env.TARGET_DIR }}
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Set Capacitor app ID and app name from env
         shell: bash
         run: |
           set -Eeuo pipefail
+          npx cap setAppId "$BUNDLE_ID"
+          npx cap setAppName "$APP_NAME"
 
-          npm ci --no-audit --no-fund --progress=false
-
-      # ============================================================
-      # 7. Verify pinned dependencies
-      # ============================================================
-      - name: Verify pinned Capacitor dependencies
-        working-directory: ${{ env.TARGET_DIR }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          node <<'NODE'
-          const pkg = require("./package.json");
-
-          const dependencies = {
-            ...(pkg.dependencies || {}),
-            ...(pkg.devDependencies || {})
-          };
-
-          const required = [
-            "@capacitor/core",
-            "@capacitor/cli",
-            "@capacitor/ios",
-            "@capacitor-community/admob"
-          ];
-
-          for (const name of required) {
-            const version = dependencies[name];
-
-            if (!version) {
-              throw new Error(`Missing dependency: ${name}`);
-            }
-
-            if (!/^\d+\.\d+\.\d+$/.test(version)) {
-              throw new Error(
-                `${name} must use an exact version. Found: ${version}`
-              );
-            }
-
-            console.log(`${name}: ${version}`);
-          }
-          NODE
-
-          npm ls \
-            @capacitor/core \
-            @capacitor/cli \
-            @capacitor/ios \
-            @capacitor-community/admob
-
-      # ============================================================
-      # 8. Configure Capacitor
-      # ============================================================
-      - name: Configure Capacitor
-        working-directory: ${{ env.TARGET_DIR }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          python3 <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          config_path = Path("capacitor.config.json")
-
-          with config_path.open("r", encoding="utf-8") as file:
-              config = json.load(file)
-
-          config["appId"] = os.environ["BUNDLE_ID"]
-          config["appName"] = os.environ["APP_NAME"]
-          config["webDir"] = "www"
-
-          plugins = config.setdefault("plugins", {})
-          admob = plugins.setdefault("AdMob", {})
-          admob["appId"] = os.environ["ADMOB_APP_ID"]
-
-          with config_path.open("w", encoding="utf-8") as file:
-              json.dump(config, file, indent=2)
-              file.write("\n")
-          PY
-
-          cat capacitor.config.json
-
-      # ============================================================
-      # 9. Generate AdMob runtime configuration
-      # ============================================================
-      - name: Generate AdMob runtime configuration
-        working-directory: ${{ env.TARGET_DIR }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          python3 <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          values = {
-              "appId": os.environ["ADMOB_APP_ID"],
-              "appOpen": os.environ["ADMOB_APP_OPEN_AD_ID"],
-              "banner": os.environ["ADMOB_BANNER_AD_ID"],
-              "interstitial": os.environ["ADMOB_INTERSTITIAL_AD_ID"],
-              "nativeAdvanced": os.environ["ADMOB_NATIVE_ADVANCED_AD_ID"],
-              "rewarded": os.environ["ADMOB_REWARDED_AD_ID"],
-              "rewardedInterstitial": os.environ["ADMOB_REWARDED_INTERSTITIAL_AD_ID"]
-          }
-
-          content = (
-              "/* Generated by GitHub Actions. Do not edit manually. */\n"
-              "window.__ADMOB_CONFIG__ = Object.freeze("
-              + json.dumps(values, indent=4)
-              + ");\n"
-          )
-
-          Path("www/admob-config.js").write_text(content, encoding="utf-8")
-          PY
-
-          test -s www/admob-config.js
-          grep -F "window.__ADMOB_CONFIG__" www/admob-config.js > /dev/null
-
-      # ============================================================
-      # 10. Verify HTML script order
-      # ============================================================
-      - name: Verify HTML script order
-        working-directory: ${{ env.TARGET_DIR }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          config_line="$(
-            grep -n 'admob-config.js' www/index.html \
-              | head -n 1 \
-              | cut -d: -f1 || true
-          )"
-
-          app_line="$(
-            grep -n 'index.js' www/index.html \
-              | tail -n 1 \
-              | cut -d: -f1 || true
-          )"
-
-          if [[ -z "$config_line" ]]; then
-            echo "::error::www/index.html does not load admob-config.js"
-            exit 1
-          fi
-
-          if [[ -z "$app_line" ]]; then
-            echo "::error::www/index.html does not load index.js"
-            exit 1
-          fi
-
-          if (( config_line >= app_line )); then
-            echo "::error::admob-config.js must load before index.js"
-            exit 1
-          fi
-
-          echo "HTML script order is valid."
-
-      # ============================================================
-      # 11. Validate JavaScript
-      # ============================================================
-      - name: Validate JavaScript syntax
-        working-directory: ${{ env.TARGET_DIR }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          node --check www/index.js
-
-          safe_count="$(
-            grep -c 'function safeAppInit' www/index.js || true
-          )"
-
-          settings_count="$(
-            grep -c 'function setupSettingsControls' www/index.js || true
-          )"
-
-          if [[ "$safe_count" != "1" ]]; then
-            echo "::error::Expected one safeAppInit function; found $safe_count"
-            exit 1
-          fi
-
-          if [[ "$settings_count" != "1" ]]; then
-            echo "::error::Expected one setupSettingsControls function; found $settings_count"
-            exit 1
-          fi
-
-      # ============================================================
-      # 12. Sync Capacitor
-      # ============================================================
       - name: Sync Capacitor iOS project
-        working-directory: ${{ env.TARGET_DIR }}
         shell: bash
-        env:
-          COCOAPODS_DISABLE_STATS: "true"
         run: |
           set -Eeuo pipefail
-
           npx cap sync ios
 
-      # ============================================================
-      # 13. Configure Info.plist
-      # ============================================================
-      - name: Configure Info.plist
-        working-directory: ${{ env.TARGET_DIR }}
+      - name: Install CocoaPods
+        working-directory: ios/App
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pod install --repo-update
+
+      - name: Import signing certificate and provisioning profile
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          plist="ios/App/App/Info.plist"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
 
-          set_plist_value() {
-            local key="$1"
-            local type="$2"
-            local value="$3"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
 
-            /usr/libexec/PlistBuddy \
-              -c "Set :$key $value" \
-              "$plist" 2>/dev/null || \
-            /usr/libexec/PlistBuddy \
-              -c "Add :$key $type $value" \
-              "$plist"
-          }
-
-          set_plist_value \
-            "GADApplicationIdentifier" \
-            "string" \
-            "$ADMOB_APP_ID"
-
-          set_plist_value \
-            "NSUserTrackingUsageDescription" \
-            "string" \
-            "This identifier will be used to deliver personalized ads to you."
-
-          set_plist_value \
-            "UIRequiresFullScreen" \
-            "bool" \
-            "true"
-
-          set_plist_value \
-            "ITSAppUsesNonExemptEncryption" \
-            "bool" \
-            "false"
-
-          echo "Info.plist configured."
-
-      # ============================================================
-      # 14. Install CocoaPods from committed lockfile
-      # ============================================================
-      - name: Install CocoaPods dependencies
-        working-directory: ${{ env.TARGET_DIR }}/ios/App
-        shell: bash
-        env:
-          COCOAPODS_DISABLE_STATS: "true"
-        run: |
-          set -Eeuo pipefail
-
-          test -f Podfile
-          test -f Podfile.lock
-
-          pod install --deployment
-
-          test -d Pods/Pods.xcodeproj
-          test -f Pods/Pods.xcodeproj/project.pbxproj
-
-          echo "CocoaPods installation completed."
-
-      # ============================================================
-      # 15. Verify generated Pods settings
-      # ============================================================
-      - name: Verify CocoaPods signing settings
-        working-directory: ${{ env.TARGET_DIR }}/ios/App
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          pods_project="Pods/Pods.xcodeproj/project.pbxproj"
-
-          test -f "$pods_project"
-
-          echo "Generated Pods project exists."
-
-          grep -F \
-            "CODE_SIGNING_ALLOWED = NO" \
-            "$pods_project" > /dev/null || {
-              echo "::warning::CODE_SIGNING_ALLOWED = NO was not found in the generated Pods project."
-            }
-
-      # ============================================================
-      # 16. Validate signing secrets
-      # ============================================================
-      - name: Validate signing secrets
-        shell: bash
-        env:
-          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
-          PROVISIONING_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE }}
-          ASC_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
-        run: |
-          set -Eeuo pipefail
-
-          : "${CERTIFICATE_BASE64:?Missing APPLE_CERTIFICATE_P12}"
-          : "${CERTIFICATE_PASSWORD:?Missing APPLE_CERTIFICATE_PASS}"
-          : "${PROVISIONING_PROFILE_BASE64:?Missing BASE64_PROVISIONING_PROFILE}"
-          : "${APP_STORE_CONNECT_KEY_ID:?Missing APP_STORE_CONNECT_KEY_ID}"
-          : "${APP_STORE_CONNECT_ISSUER_ID:?Missing APP_STORE_CONNECT_ISSUER_ID}"
-          : "${ASC_KEY_CONTENT:?Missing APP_STORE_CONNECT_KEY_CONTENT}"
-
-      # ============================================================
-      # 17. Import Apple distribution certificate
-      # ============================================================
-      - name: Import Apple distribution certificate
-        shell: bash
-        env:
-          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
-          KEYCHAIN_PASSWORD: "temporary-${{ github.run_id }}"
-        run: |
-          set -Eeuo pipefail
-
-          certificate_path="$RUNNER_TEMP/certificate.p12"
-          keychain_path="$RUNNER_TEMP/signing.keychain-db"
-
-          echo "$CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
-
-          security create-keychain \
-            -p "$KEYCHAIN_PASSWORD" \
-            "$keychain_path"
-
-          security set-keychain-settings \
-            -lut 21600 \
-            "$keychain_path"
-
-          security unlock-keychain \
-            -p "$KEYCHAIN_PASSWORD" \
-            "$keychain_path"
-
-          security import \
-            "$certificate_path" \
+          echo "$CERTIFICATE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" \
+            -k "$KEYCHAIN_PATH" \
             -P "$CERTIFICATE_PASSWORD" \
             -A \
-            -t cert \
-            -f pkcs12 \
-            -k "$keychain_path"
+            -T /usr/bin/codesign
 
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s \
-            -k "$KEYCHAIN_PASSWORD" \
-            "$keychain_path"
+          mkdir -p "$PROFILE_DIR"
+          echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/App.mobileprovision"
+          cp "$RUNNER_TEMP/App.mobileprovision" "$PROFILE_DIR/"
 
-          security list-keychains \
-            -d user \
-            -s "$keychain_path" \
-            login.keychain-db
-
-          security default-keychain \
-            -s "$keychain_path"
-
-          echo "KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
-
-      # ============================================================
-      # 18. Install and validate App Store provisioning profile
-      # ============================================================
-      - name: Install App Store provisioning profile
-        shell: bash
-        env:
-          PROVISIONING_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE }}
-        run: |
-          set -Eeuo pipefail
-
-          profile_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
-          profile_path="$RUNNER_TEMP/profile.mobileprovision"
-          profile_plist="$RUNNER_TEMP/profile.plist"
-
-          mkdir -p "$profile_dir"
-
-          echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile_path"
-
-          security cms \
-            -D \
-            -i "$profile_path" \
-            > "$profile_plist"
-
-          profile_uuid="$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :UUID" \
-              "$profile_plist"
-          )"
-
-          profile_name="$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :Name" \
-              "$profile_plist"
-          )"
-
-          profile_app_id="$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :Entitlements:application-identifier" \
-              "$profile_plist"
-          )"
-
-          provisioned_devices="$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :ProvisionedDevices" \
-              "$profile_plist" 2>/dev/null || true
-          )"
-
-          echo "Provisioning profile: $profile_name"
-          echo "Profile application identifier: $profile_app_id"
-
-          if [[ "$profile_app_id" != *"$BUNDLE_ID" ]]; then
-            echo "::error::Provisioning profile does not match $BUNDLE_ID"
-            exit 1
-          fi
-
-          if [[ -n "$provisioned_devices" ]]; then
-            echo "::error::The supplied profile is not an App Store profile."
-            echo "::error::Use an App Store distribution provisioning profile."
-            exit 1
-          fi
-
-          cp \
-            "$profile_path" \
-            "$profile_dir/$profile_uuid.mobileprovision"
-
-          echo "PROFILE_UUID=$profile_uuid" >> "$GITHUB_ENV"
-          echo "PROFILE_NAME=$profile_name" >> "$GITHUB_ENV"
-
-      # ============================================================
-      # 19. Configure signing on native App target only
-      # ============================================================
-      - name: Configure native App target signing
-        working-directory: ${{ env.TARGET_DIR }}/ios/App
-        shell: bash
-        env:
-          APP_PROFILE_UUID: ${{ env.PROFILE_UUID }}
-          APP_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
-          APP_BUNDLE_ID: ${{ env.BUNDLE_ID }}
-        run: |
-          set -Eeuo pipefail
-
-          gem install xcodeproj --no-document
-
-          ruby <<'RUBY'
-          require 'xcodeproj'
-
-          project = Xcodeproj::Project.open('App.xcodeproj')
-          target = project.targets.find { |item| item.name == 'App' }
-
-          abort 'Native App target was not found.' unless target
-
-          profile_uuid = ENV.fetch('APP_PROFILE_UUID')
-          team_id = ENV.fetch('APP_TEAM_ID')
-          bundle_id = ENV.fetch('APP_BUNDLE_ID')
-
-          target.build_configurations.each do |configuration|
-            settings = configuration.build_settings
-
-            settings['PRODUCT_BUNDLE_IDENTIFIER'] = bundle_id
-            settings['DEVELOPMENT_TEAM'] = team_id
-            settings['CODE_SIGN_STYLE'] = 'Manual'
-            settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution'
-            settings['PROVISIONING_PROFILE_SPECIFIER'] = profile_uuid
-            settings['CODE_SIGNING_ALLOWED'] = 'YES'
-            settings['CODE_SIGNING_REQUIRED'] = 'YES'
-          end
-
-          project.save
-
-          puts 'Configured manual distribution signing on the native App target.'
-          RUBY
-
-      # ============================================================
-      # 20. Verify native App target signing
-      # ============================================================
       - name: Verify App target signing
-        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        working-directory: ios/App
         shell: bash
         run: |
           set -Eeuo pipefail
+          xcodebuild -list -project App.xcodeproj -scheme App
 
-          settings_file="$RUNNER_TEMP/app-signing-settings.txt"
-
-          xcodebuild \
-            -workspace App.xcworkspace \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            -showBuildSettings \
-            > "$settings_file"
-
-          cat "$settings_file"
-
-          require_setting() {
-            local expected="$1"
-
-            if ! grep -F -- "$expected" "$settings_file" > /dev/null; then
-              echo "::error::Missing expected Xcode setting: $expected"
-              exit 1
-            fi
-          }
-
-          require_setting "TARGET_NAME = App"
-          require_setting "PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID"
-          require_setting "CODE_SIGN_STYLE = Manual"
-          require_setting "CODE_SIGN_IDENTITY = Apple Distribution"
-          require_setting "DEVELOPMENT_TEAM = $APPLE_TEAM_ID"
-          require_setting "PROVISIONING_PROFILE_SPECIFIER = $PROFILE_UUID"
-
-          echo "App target signing settings verified."
-
-      # ============================================================
-      # 21. Set version and build number
-      # ============================================================
-      - name: Set iOS version and build number
-        working-directory: ${{ env.TARGET_DIR }}/ios/App
-        shell: bash
-        env:
-          BUILD_NUMBER: ${{ github.run_number }}
-        run: |
-          set -Eeuo pipefail
-
-          plist="App/Info.plist"
-
-          /usr/libexec/PlistBuddy \
-            -c "Set :CFBundleShortVersionString $APP_VERSION" \
-            "$plist" 2>/dev/null || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :CFBundleShortVersionString string $APP_VERSION" \
-            "$plist"
-
-          /usr/libexec/PlistBuddy \
-            -c "Set :CFBundleVersion $BUILD_NUMBER" \
-            "$plist" 2>/dev/null || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :CFBundleVersion string $BUILD_NUMBER" \
-            "$plist"
-
-      # ============================================================
-      # 22. Archive iOS app
-      # ============================================================
       - name: Archive iOS app
-        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        working-directory: ios/App
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -703,13 +95,16 @@ jobs:
           log_path="$RUNNER_TEMP/xcodebuild.log"
 
           set +e
-
           xcodebuild archive \
             -workspace App.xcworkspace \
-            -scheme "$XCODE_SCHEME" \
+            -scheme App \
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath "$archive_path" \
+            -allowProvisioningUpdates \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
+            CODE_SIGN_STYLE=Automatic \
             IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
             COMPILER_INDEX_STORE_ENABLE=NO \
             2>&1 | tee "$log_path"
@@ -719,201 +114,19 @@ jobs:
 
           if [[ "$build_status" -ne 0 ]]; then
             echo "===== BUILD DIAGNOSTICS ====="
-
-            grep -n -E \
-              "error:|warning:|SwiftCompile|provision|profile|signing" \
-              "$log_path" \
-              | tail -n 250 || true
-
+            grep -n -E "error:|warning:|SwiftCompile|signing|profile|provision" "$log_path" | tail -n 250 || true
             echo "===== LAST 300 BUILD LOG LINES ====="
             tail -n 300 "$log_path"
-
             exit "$build_status"
           fi
 
           test -d "$archive_path/Products/Applications/App.app"
 
-      # ============================================================
-      # 23. Create export options
-      # ============================================================
-      - name: Create export options
-        working-directory: ${{ env.TARGET_DIR }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          python3 <<'PY'
-          import os
-          import plistlib
-          from pathlib import Path
-
-          export_options = {
-              "method": "app-store-connect",
-              "teamID": os.environ["APPLE_TEAM_ID"],
-              "signingStyle": "manual",
-              "stripSwiftSymbols": True,
-              "destination": "export",
-              "provisioningProfiles": {
-                  os.environ["BUNDLE_ID"]: os.environ["PROFILE_UUID"]
-              }
-          }
-
-          with Path("exportOptions.plist").open("wb") as file:
-              plistlib.dump(export_options, file)
-          PY
-
-          plutil -lint exportOptions.plist
-
-      # ============================================================
-      # 24. Export IPA
-      # ============================================================
-      - name: Export IPA
-        working-directory: ${{ env.TARGET_DIR }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          archive_path="$RUNNER_TEMP/EnBlocks.xcarchive"
-          output_path="$TARGET_DIR/ios/App/output"
-
-          rm -rf "$output_path"
-          mkdir -p "$output_path"
-
-          xcodebuild \
-            -exportArchive \
-            -archivePath "$archive_path" \
-            -exportOptionsPlist exportOptions.plist \
-            -exportPath "$output_path"
-
-          ipa_path="$(
-            find "$output_path" \
-              -maxdepth 1 \
-              -name "*.ipa" \
-              -print \
-              -quit
-          )"
-
-          if [[ -z "$ipa_path" || ! -f "$ipa_path" ]]; then
-            echo "::error::No IPA was produced."
-            exit 1
-          fi
-
-          echo "IPA_PATH=$ipa_path" >> "$GITHUB_ENV"
-          echo "Created IPA: $ipa_path"
-
-      # ============================================================
-      # 25. Validate signed archive
-      # ============================================================
-      - name: Validate signed app
-        working-directory: ${{ env.TARGET_DIR }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          app_path="$RUNNER_TEMP/EnBlocks.xcarchive/Products/Applications/App.app"
-
-          codesign \
-            --verify \
-            --deep \
-            --strict \
-            --verbose=2 \
-            "$app_path"
-
-          actual_bundle_id="$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :CFBundleIdentifier" \
-              "$app_path/Info.plist"
-          )"
-
-          if [[ "$actual_bundle_id" != "$BUNDLE_ID" ]]; then
-            echo "::error::Bundle ID mismatch."
-            echo "::error::Expected: $BUNDLE_ID"
-            echo "::error::Found: $actual_bundle_id"
-            exit 1
-          fi
-
-          archive_admob_id="$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :GADApplicationIdentifier" \
-              "$app_path/Info.plist"
-          )"
-
-          if [[ "$archive_admob_id" != "$ADMOB_APP_ID" ]]; then
-            echo "::error::AdMob application ID mismatch in archive."
-            exit 1
-          fi
-
-          echo "Signed archive validation passed."
-
-      # ============================================================
-      # 26. Upload IPA artifact
-      # ============================================================
-      - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: EnBlocks-iOS-${{ github.run_number }}
-          path: ${{ env.TARGET_DIR }}/ios/App/output/*.ipa
-          if-no-files-found: error
-          retention-days: 14
-
-      # ============================================================
-      # 27. Upload generated Podfile.lock
-      # ============================================================
       - name: Upload generated CocoaPods lockfile
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: EnBlocks-Podfile-lock-${{ github.run_number }}
-          path: ${{ env.TARGET_DIR }}/ios/App/Podfile.lock
+          path: ios/App/Podfile.lock
           if-no-files-found: warn
           retention-days: 14
-
-      # ============================================================
-      # 28. Upload to TestFlight
-      # ============================================================
-      - name: Upload to TestFlight
-        working-directory: ${{ env.TARGET_DIR }}
-        shell: bash
-        env:
-          ASC_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
-        run: |
-          set -Eeuo pipefail
-
-          : "${ASC_KEY_CONTENT:?Missing APP_STORE_CONNECT_KEY_CONTENT}"
-
-          api_key_dir="$HOME/.appstoreconnect/private_keys"
-          key_file="$api_key_dir/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
-
-          mkdir -p "$api_key_dir"
-
-          if [[ "$ASC_KEY_CONTENT" == *"BEGIN PRIVATE KEY"* ]]; then
-            printf '%s\n' "$ASC_KEY_CONTENT" > "$key_file"
-          else
-            echo "$ASC_KEY_CONTENT" | base64 --decode > "$key_file"
-          fi
-
-          chmod 600 "$key_file"
-
-          xcrun altool \
-            --upload-app \
-            -t ios \
-            -f "$IPA_PATH" \
-            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
-            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
-
-      # ============================================================
-      # 29. Cleanup
-      # ============================================================
-      - name: Cleanup signing files
-        if: always()
-        shell: bash
-        run: |
-          set +e
-
-          if [[ -n "${KEYCHAIN_PATH:-}" ]]; then
-            security delete-keychain "$KEYCHAIN_PATH"
-          fi
-
-          rm -f "$RUNNER_TEMP/certificate.p12"
-          rm -f "$RUNNER_TEMP/profile.mobileprovision"
-          rm -f "$RUNNER_TEMP/profile.plist"
