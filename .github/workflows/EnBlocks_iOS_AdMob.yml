@@ -310,6 +310,15 @@ jobs:
           echo "Pod targets:"
           grep -E 'name = (Capacitor|CapacitorCommunityAdmob|CapacitorCordova|Pods-App)' \
             Pods/Pods.xcodeproj/project.pbxproj || true
+      
+      - name: Upload generated CocoaPods lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EnBlocks-Podfile-lock-${{ github.run_number }}
+          path: ${{ env.TARGET_DIR }}/ios/App/Podfile.lock
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Validate signing secrets
         shell: bash
