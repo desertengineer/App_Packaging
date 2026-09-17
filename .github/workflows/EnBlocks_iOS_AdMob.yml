@@ -457,6 +457,8 @@ jobs:
           archive_path="$RUNNER_TEMP/EnBlocks.xcarchive"
           log_path="$RUNNER_TEMP/xcodebuild.log"
 
+          set +e
+
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme "$XCODE_SCHEME" \
@@ -465,11 +467,23 @@ jobs:
             -archivePath "$archive_path" \
             IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
             COMPILER_INDEX_STORE_ENABLE=NO \
-            > "$log_path" 2>&1 || {
-              echo "===== XCODEBUILD ERROR ====="
-              cat "$log_path"
-              exit 1
-            }
+            2>&1 | tee "$log_path"
+
+          build_status=${PIPESTATUS[0]}
+          set -e
+
+          if [[ "$build_status" -ne 0 ]]; then
+            echo "===== SWIFT/BUILD DIAGNOSTICS ====="
+            grep -n -E \
+              "error:|warning:|SwiftCompile|CapacitorCommunityAdmob|AdInterstitialExecutor|AdRewardExecutor|ConsentExecutor|Plugin.swift" \
+              "$log_path" \
+              | tail -n 200 || true
+
+            echo "===== LAST 300 BUILD LOG LINES ====="
+            tail -n 300 "$log_path"
+
+            exit "$build_status"
+          fi
 
           test -d "$archive_path/Products/Applications/App.app"
 
