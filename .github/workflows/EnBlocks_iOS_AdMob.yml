@@ -276,14 +276,26 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$plist" 2>/dev/null || \
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$plist"
 
-      - name: Install CocoaPods
+      - name: Install CocoaPods dependencies
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
         env:
           COCOAPODS_DISABLE_STATS: "true"
         run: |
           set -Eeuo pipefail
-          pod install --deployment
+
+          if [[ -f "Podfile.lock" ]]; then
+            echo "Using committed Podfile.lock"
+            pod install --deployment
+          else
+            echo "Podfile.lock is not present; generating it on the macOS runner"
+            pod install
+          fi
+
+          test -d "Pods/Pods.xcodeproj"
+          test -f "Podfile.lock"
+
+          echo "CocoaPods installation completed."
 
       - name: Validate signing secrets
         shell: bash
