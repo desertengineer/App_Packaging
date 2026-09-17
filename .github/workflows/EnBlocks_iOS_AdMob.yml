@@ -367,17 +367,31 @@ jobs:
 
           cp "$profile" "$profile_dir/$profile_uuid.mobileprovision"
           echo "PROFILE_UUID=$profile_uuid" >> "$GITHUB_ENV"
-
-      - name: Set version and build
+        
+      - name: Verify App target signing settings
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          plist="App/Info.plist"
+          settings="$(xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -showBuildSettings)"
 
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER" "$plist"
+          echo "$settings" | grep -E \
+            "TARGET_NAME|PRODUCT_BUNDLE_IDENTIFIER|CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER"
+
+          echo "$settings" | grep -q "PROVISIONING_PROFILE_SPECIFIER = $PROFILE_UUID" || {
+            echo "::error::The App target does not use the installed provisioning profile."
+            exit 1
+          }
+
+          echo "$settings" | grep -q "DEVELOPMENT_TEAM = $APPLE_TEAM_ID" || {
+            echo "::error::The App target does not use the expected Apple team."
+            exit 1
+          }
 
       - name: Archive iOS app
         working-directory: ${{ env.TARGET_DIR }}/ios/App
@@ -394,9 +408,6 @@ jobs:
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath "$archive_path" \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
             IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
             COMPILER_INDEX_STORE_ENABLE=NO \
             > "$log_path" 2>&1 || {
