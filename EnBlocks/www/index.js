@@ -48,20 +48,20 @@ let dragOffsetX = 0, dragOffsetY = 0, hoverGridX = -1, hoverGridY = -1, boardCel
 
 let musicVol = 0.5; let sfxVol = 0.8;
 
-// Safe helper to obtain Capacitor AdMob Plugin instance in Vanilla JS
+// ============================================================
+// Capacitor AdMob integration
+// ============================================================
+
 const getAdMob = () => {
     try {
-        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) {
-            return window.Capacitor.Plugins.AdMob;
-        }
-    } catch (e) {
-        console.warn('AdMob plugin access check exception:', e);
+        return window.Capacitor?.Plugins?.AdMob ?? null;
+    } catch (error) {
+        console.warn('Unable to access the Capacitor AdMob plugin:', error);
+        return null;
     }
-    return null;
 };
 
-// AdMob Enums for Vanilla JS context
-const BannerAdSize = {
+const BannerAdSize = Object.freeze({
     BANNER: 'BANNER',
     FULL_BANNER: 'FULL_BANNER',
     LARGE_BANNER: 'LARGE_BANNER',
@@ -69,75 +69,116 @@ const BannerAdSize = {
     MEDIUM_RECTANGLE: 'MEDIUM_RECTANGLE',
     SMART_BANNER: 'SMART_BANNER',
     ADAPTIVE_BANNER: 'ADAPTIVE_BANNER'
-};
+});
 
-const BannerAdPosition = {
+const BannerAdPosition = Object.freeze({
     TOP_CENTER: 'TOP_CENTER',
     CENTER: 'CENTER',
     BOTTOM_CENTER: 'BOTTOM_CENTER'
-};
+});
 
-const RewardAdPluginEvents = {
-    Loaded: 'onRewardedAdLoaded',
-    FailedToLoad: 'onRewardedAdFailedToLoad',
-    Showed: 'onRewardedAdShowed',
-    FailedToShow: 'onRewardedAdFailedToShow',
-    Dismissed: 'onRewardedAdDismissed',
-    Rewarded: 'onRewardedAdReward'
-};
+const RewardAdPluginEvents = Object.freeze({
+    Loaded: 'onRewardedVideoAdLoaded',
+    FailedToLoad: 'onRewardedVideoAdFailedToLoad',
+    Showed: 'onRewardedVideoAdShowed',
+    FailedToShow: 'onRewardedVideoAdFailedToShow',
+    Dismissed: 'onRewardedVideoAdDismissed',
+    Rewarded: 'onRewardedVideoAdReward'
+});
 
-// AdMob Test / Production Unit IDs
-const ADMOB_UNITS = {
+// Use test IDs only for development.
+// Replace these values with your real AdMob ad-unit IDs for Release.
+const ADMOB_UNITS = Object.freeze({
     banner: 'ca-app-pub-3940256099942544/2934735716',
     interstitial: 'ca-app-pub-3940256099942544/4411468910',
     rewarded: 'ca-app-pub-3940256099942544/5224354917'
-};
+});
 
 let isAdMobInitialized = false;
+let isAdMobInitializing = false;
 let isBannerShowing = false;
 let isInterstitialLoaded = false;
 let isRewardedLoaded = false;
+let monetizationListenersAttached = false;
 
-/**
- * Initialize AdMob SDK safely after window scene layout resolves
- */
-async function initEnBlocksMonetization() {
-    if (isAdMobInitialized) return;
-    const AdMob = getAdMob();
-    if (!AdMob) {
-        console.warn('Capacitor AdMob native plugin is not available in current environment.');
-        return;
+let interstitialLoadPromise = null;
+let rewardedLoadPromise = null;
+
+function isNativeCapacitorApp() {
+    return Boolean(
+        window.Capacitor &&
+        typeof window.Capacitor.isNativePlatform === 'function' &&
+        window.Capacitor.isNativePlatform()
+    );
+}
+
+async function waitForAdMobPlugin(maxAttempts = 20) {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const AdMob = getAdMob();
+
+        if (AdMob) {
+            return AdMob;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 250));
     }
 
+    return null;
+}
+
+async function initEnBlocksMonetization() {
+    if (isAdMobInitialized || isAdMobInitializing) {
+        return isAdMobInitialized;
+    }
+
+    if (!isNativeCapacitorApp()) {
+        console.info('Running in a browser; AdMob initialization skipped.');
+        return false;
+    }
+
+    isAdMobInitializing = true;
+
     try {
+        const AdMob = await waitForAdMobPlugin();
+
+        if (!AdMob) {
+            console.warn('AdMob plugin is unavailable; monetization is disabled.');
+            return false;
+        }
+
         await AdMob.initialize({
             requestTrackingAuthorization: false,
-            testingDevices: [],
             initializeForTesting: false
         });
+
         isAdMobInitialized = true;
-        console.log('AdMob SDK initialized successfully.');
 
-        // Attach listeners for auto-reloading ads
-        attachAdEventListeners();
+        await attachAdEventListeners();
 
-        // Delay ad requests slightly to avoid iOS main-thread layout conflicts on launch
-        setTimeout(() => {
-            preloadInterstitialAd();
-            preloadRewardedAd();
-            showBannerAd();
-        }, 1000);
-    } catch (err) {
-        console.error('AdMob initialization error:', err);
+        // Do not request native ads during the first WebView layout pass.
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        void preloadInterstitialAd();
+        void preloadRewardedAd();
+        void showBannerAd();
+
+        console.info('AdMob initialized successfully.');
+        return true;
+    } catch (error) {
+        console.error('AdMob initialization failed:', error);
+        isAdMobInitialized = false;
+        return false;
+    } finally {
+        isAdMobInitializing = false;
     }
 }
 
-/**
- * Display Banner Ad at the bottom of the screen
- */
 async function showBannerAd() {
     const AdMob = getAdMob();
-    if (!AdMob || isBannerShowing) return;
+
+    if (!AdMob || !isAdMobInitialized || isBannerShowing) {
+        return false;
+    }
 
     try {
         await AdMob.showBanner({
@@ -146,158 +187,232 @@ async function showBannerAd() {
             position: BannerAdPosition.BOTTOM_CENTER,
             margin: 0
         });
+
         isBannerShowing = true;
-        console.log('Banner ad displayed.');
-    } catch (err) {
-        console.error('Failed to show banner ad:', err);
+        return true;
+    } catch (error) {
+        console.error('Failed to show banner ad:', error);
+        return false;
     }
 }
 
-/**
- * Preload Interstitial Ad
- */
-async function preloadInterstitialAd() {
+async function hideBannerAd() {
     const AdMob = getAdMob();
-    if (!AdMob) return;
 
-    try {
-        await AdMob.prepareInterstitial({
-            adId: ADMOB_UNITS.interstitial
-        });
-        isInterstitialLoaded = true;
-        console.log('Interstitial ad preloaded.');
-    } catch (err) {
-        console.error('Failed to prepare interstitial ad:', err);
-        isInterstitialLoaded = false;
-    }
-}
-
-/**
- * Show Interstitial Ad if available
- */
-async function showInterstitialAd() {
-    const AdMob = getAdMob();
-    if (!AdMob) return;
-
-    if (isInterstitialLoaded) {
-        try {
-            await AdMob.showInterstitial();
-            isInterstitialLoaded = false;
-            preloadInterstitialAd();
-        } catch (err) {
-            console.error('Error showing interstitial ad:', err);
-        }
-    } else {
-        preloadInterstitialAd();
-    }
-}
-
-/**
- * Preload Rewarded Video Ad
- */
-async function preloadRewardedAd() {
-    const AdMob = getAdMob();
-    if (!AdMob) return;
-
-    try {
-        await AdMob.prepareRewardVideo({
-            adId: ADMOB_UNITS.rewarded
-        });
-        isRewardedLoaded = true;
-        console.log('Rewarded ad preloaded.');
-    } catch (err) {
-        console.error('Failed to prepare rewarded ad:', err);
-        isRewardedLoaded = false;
-    }
-}
-
-/**
- * Show Rewarded Ad and execute callback on reward
- */
-async function showRewardedAd(onRewardGrantedCallback) {
-    const AdMob = getAdMob();
-    if (!AdMob) {
-        if (typeof onRewardGrantedCallback === 'function') onRewardGrantedCallback();
+    if (!AdMob || !isBannerShowing) {
         return;
     }
 
-    if (isRewardedLoaded) {
+    try {
+        await AdMob.hideBanner();
+    } catch (error) {
+        console.warn('Failed to hide banner ad:', error);
+    } finally {
+        isBannerShowing = false;
+    }
+}
+
+async function preloadInterstitialAd() {
+    const AdMob = getAdMob();
+
+    if (!AdMob || !isAdMobInitialized || isInterstitialLoaded) {
+        return false;
+    }
+
+    if (interstitialLoadPromise) {
+        return interstitialLoadPromise;
+    }
+
+    interstitialLoadPromise = (async () => {
         try {
-            const rewardListener = await AdMob.addListener(RewardAdPluginEvents.Rewarded, (reward) => {
-                console.log('User earned reward:', reward);
+            await AdMob.prepareInterstitial({
+                adId: ADMOB_UNITS.interstitial
+            });
+
+            isInterstitialLoaded = true;
+            return true;
+        } catch (error) {
+            isInterstitialLoaded = false;
+            console.error('Failed to prepare interstitial ad:', error);
+            return false;
+        } finally {
+            interstitialLoadPromise = null;
+        }
+    })();
+
+    return interstitialLoadPromise;
+}
+
+async function showInterstitialAd() {
+    const AdMob = getAdMob();
+
+    if (!AdMob || !isAdMobInitialized) {
+        return false;
+    }
+
+    if (!isInterstitialLoaded) {
+        void preloadInterstitialAd();
+        return false;
+    }
+
+    try {
+        await AdMob.showInterstitial();
+        isInterstitialLoaded = false;
+        void preloadInterstitialAd();
+        return true;
+    } catch (error) {
+        isInterstitialLoaded = false;
+        console.error('Failed to show interstitial ad:', error);
+        void preloadInterstitialAd();
+        return false;
+    }
+}
+
+async function preloadRewardedAd() {
+    const AdMob = getAdMob();
+
+    if (!AdMob || !isAdMobInitialized || isRewardedLoaded) {
+        return false;
+    }
+
+    if (rewardedLoadPromise) {
+        return rewardedLoadPromise;
+    }
+
+    rewardedLoadPromise = (async () => {
+        try {
+            await AdMob.prepareRewardVideoAd({
+                adId: ADMOB_UNITS.rewarded
+            });
+
+            isRewardedLoaded = true;
+            return true;
+        } catch (error) {
+            isRewardedLoaded = false;
+            console.error('Failed to prepare rewarded ad:', error);
+            return false;
+        } finally {
+            rewardedLoadPromise = null;
+        }
+    })();
+
+    return rewardedLoadPromise;
+}
+
+async function showRewardedAd(onRewardGrantedCallback) {
+    const AdMob = getAdMob();
+
+    // Never grant a reward when the ad is unavailable.
+    if (!AdMob || !isAdMobInitialized || !isRewardedLoaded) {
+        console.warn('Rewarded ad is not ready.');
+        void preloadRewardedAd();
+        return false;
+    }
+
+    let rewardGranted = false;
+    let rewardListener = null;
+    let dismissedListener = null;
+
+    try {
+        rewardListener = await AdMob.addListener(
+            RewardAdPluginEvents.Rewarded,
+            reward => {
+                if (rewardGranted) {
+                    return;
+                }
+
+                rewardGranted = true;
+
                 if (typeof onRewardGrantedCallback === 'function') {
                     onRewardGrantedCallback(reward);
                 }
-                if (rewardListener && typeof rewardListener.remove === 'function') {
-                    rewardListener.remove();
-                }
-            });
+            }
+        );
 
-            await AdMob.showRewardVideo();
-            isRewardedLoaded = false;
-            preloadRewardedAd();
-        } catch (err) {
-            console.error('Error showing rewarded ad:', err);
-            if (typeof onRewardGrantedCallback === 'function') onRewardGrantedCallback();
+        dismissedListener = await AdMob.addListener(
+            RewardAdPluginEvents.Dismissed,
+            () => {
+                isRewardedLoaded = false;
+            }
+        );
+
+        await AdMob.showRewardVideoAd();
+
+        return true;
+    } catch (error) {
+        console.error('Failed to show rewarded ad:', error);
+        return false;
+    } finally {
+        if (rewardListener?.remove) {
+            await rewardListener.remove();
         }
-    } else {
-        console.log('Rewarded ad not ready yet.');
-        preloadRewardedAd();
-        if (typeof onRewardGrantedCallback === 'function') onRewardGrantedCallback();
+
+        if (dismissedListener?.remove) {
+            await dismissedListener.remove();
+        }
+
+        isRewardedLoaded = false;
+        void preloadRewardedAd();
     }
 }
 
-// Attach functions to the global window object for HTML event listeners
-window.initEnBlocksMonetization = initEnBlocksMonetization;
-window.showBannerAd = showBannerAd;
-window.showInterstitialAd = showInterstitialAd;
-window.showRewardedAd = showRewardedAd;
-
-// Initialize app when DOM and native Capacitor container are ready
-const safeAppInit = () => {
-    console.log('EnBlocks web application loaded safely.');
-    const loadScreen = document.getElementById('loading-screen');
-    const startScreen = document.getElementById('start-screen');
-    if (loadScreen) loadScreen.classList.add('hidden-screen');
-    if (startScreen) startScreen.classList.remove('hidden-screen');
-
-    // Defer AdMob SDK trigger until 2.5 seconds post-launch to protect against iPad window initialization crashes
-    setTimeout(() => {
-        if (window.Capacitor && !isAdMobInitialized) {
-            initEnBlocksMonetization();
-        }
-    }, 2500);
-};
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', safeAppInit);
-} else {
-    safeAppInit();
-}
-
-/**
- * Internal Event Listeners & Auto-Reload Loops
- */
 async function attachAdEventListeners() {
     const AdMob = getAdMob();
-    if (!AdMob) return;
+
+    if (!AdMob || monetizationListenersAttached) {
+        return;
+    }
 
     try {
-        await AdMob.addListener('onInterstitialAdLoaded', () => { isInterstitialLoaded = true; });
-        await AdMob.addListener('onInterstitialAdDismissed', () => {
-            isInterstitialLoaded = false;
-            preloadInterstitialAd();
-        });
+        await AdMob.addListener(
+            'onInterstitialAdLoaded',
+            () => {
+                isInterstitialLoaded = true;
+            }
+        );
 
-        await AdMob.addListener(RewardAdPluginEvents.Loaded, () => { isRewardedLoaded = true; });
-        await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
-            isRewardedLoaded = false;
-            preloadRewardedAd();
-        });
-    } catch (e) {
-        console.warn('Failed attaching AdMob event listeners:', e);
+        await AdMob.addListener(
+            'onInterstitialAdDismissed',
+            () => {
+                isInterstitialLoaded = false;
+                void preloadInterstitialAd();
+            }
+        );
+
+        await AdMob.addListener(
+            RewardAdPluginEvents.Loaded,
+            () => {
+                isRewardedLoaded = true;
+            }
+        );
+
+        await AdMob.addListener(
+            RewardAdPluginEvents.FailedToLoad,
+            () => {
+                isRewardedLoaded = false;
+            }
+        );
+
+        await AdMob.addListener(
+            RewardAdPluginEvents.Dismissed,
+            () => {
+                isRewardedLoaded = false;
+                void preloadRewardedAd();
+            }
+        );
+
+        monetizationListenersAttached = true;
+    } catch (error) {
+        console.warn('Could not attach AdMob event listeners:', error);
     }
 }
+
+// Make functions available to HTML onclick handlers.
+window.initEnBlocksMonetization = initEnBlocksMonetization;
+window.showBannerAd = showBannerAd;
+window.hideBannerAd = hideBannerAd;
+window.showInterstitialAd = showInterstitialAd;
+window.showRewardedAd = showRewardedAd;
 
 // ==========================================
 // Global Click Effect (Ripple)
@@ -535,7 +650,7 @@ function openLevelsMenu() {
     const start = document.getElementById('start-screen'), lvl = document.getElementById('levels-screen');
     if (start) start.classList.add('hidden-screen');
     if (lvl) lvl.classList.remove('hidden-screen');
-    
+
     const countEl = document.getElementById('unlocked-count');
     if (countEl) countEl.innerText = maxUnlockedLevel;
 
