@@ -62,26 +62,16 @@ const getAdMob = () => {
 };
 
 const BannerAdSize = Object.freeze({
-    BANNER: 'BANNER',
-    FULL_BANNER: 'FULL_BANNER',
-    LARGE_BANNER: 'LARGE_BANNER',
-    LEADERBOARD: 'LEADERBOARD',
-    MEDIUM_RECTANGLE: 'MEDIUM_RECTANGLE',
-    SMART_BANNER: 'SMART_BANNER',
     ADAPTIVE_BANNER: 'ADAPTIVE_BANNER'
 });
 
 const BannerAdPosition = Object.freeze({
-    TOP_CENTER: 'TOP_CENTER',
-    CENTER: 'CENTER',
     BOTTOM_CENTER: 'BOTTOM_CENTER'
 });
 
 const RewardAdPluginEvents = Object.freeze({
     Loaded: 'onRewardedVideoAdLoaded',
     FailedToLoad: 'onRewardedVideoAdFailedToLoad',
-    Showed: 'onRewardedVideoAdShowed',
-    FailedToShow: 'onRewardedVideoAdFailedToShow',
     Dismissed: 'onRewardedVideoAdDismissed',
     Rewarded: 'onRewardedVideoAdReward'
 });
@@ -106,33 +96,6 @@ let monetizationListenersAttached = false;
 
 let interstitialLoadPromise = null;
 let rewardedLoadPromise = null;
-
-function safeAppInit() {
-    console.log('EnBlocks web application loaded safely.');
-
-    setupSettingsControls();
-
-    const loadingScreen = document.getElementById('loading-screen');
-    const startScreen = document.getElementById('start-screen');
-
-    if (loadingScreen) {
-        loadingScreen.classList.add('hidden-screen');
-    }
-
-    if (startScreen) {
-        startScreen.classList.remove('hidden-screen');
-    }
-
-    setTimeout(() => {
-        void initEnBlocksMonetization();
-    }, 2500);
-}
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', safeAppInit, { once: true });
-} else {
-    safeAppInit();
-}
 
 function hasValidAdUnitId(value) {
     return (
@@ -165,8 +128,13 @@ async function waitForAdMobPlugin(maxAttempts = 20) {
 }
 
 async function initEnBlocksMonetization() {
-    if (isAdMobInitialized) return true;
-    if (isAdMobInitializing) return false;
+    if (isAdMobInitialized) {
+        return true;
+    }
+
+    if (isAdMobInitializing) {
+        return false;
+    }
 
     if (!isNativeCapacitorApp()) {
         console.info('Browser environment detected; AdMob disabled.');
@@ -200,6 +168,7 @@ async function initEnBlocksMonetization() {
         isAdMobInitialized = true;
         await attachAdEventListeners();
 
+        // Let the first WebView layout complete before requesting ads.
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         void preloadInterstitialAd();
@@ -221,6 +190,10 @@ async function showBannerAd() {
     const AdMob = getAdMob();
 
     if (!AdMob || !isAdMobInitialized || isBannerShowing) {
+        return false;
+    }
+
+    if (!hasValidAdUnitId(ADMOB_UNITS.banner)) {
         return false;
     }
 
@@ -358,6 +331,7 @@ async function preloadRewardedAd() {
 async function showRewardedAd(onRewardGrantedCallback) {
     const AdMob = getAdMob();
 
+    // Never grant a reward when an ad is unavailable.
     if (!AdMob || !isAdMobInitialized || !isRewardedLoaded) {
         console.warn('Rewarded ad is not ready.');
         void preloadRewardedAd();
@@ -372,7 +346,9 @@ async function showRewardedAd(onRewardGrantedCallback) {
         rewardListener = await AdMob.addListener(
             RewardAdPluginEvents.Rewarded,
             reward => {
-                if (rewardGranted) return;
+                if (rewardGranted) {
+                    return;
+                }
 
                 rewardGranted = true;
 
@@ -1372,4 +1348,35 @@ function checkGameOverVsPlayer() {
         if (pBoard) renderBoard(pBoard, vsPlayerMeta, vsPlayerCells);
         vsPlayerDock = [generateSmartPiece(vsPlayerMeta, true), generateSmartPiece(vsPlayerMeta, true), generateSmartPiece(vsPlayerMeta, true)]; fillDock('vs-slot', vsPlayerDock);
     }
+}
+
+function safeAppInit() {
+    console.log('EnBlocks web application loaded safely.');
+
+    setupSettingsControls();
+
+    const loadingScreen = document.getElementById('loading-screen');
+    const startScreen = document.getElementById('start-screen');
+
+    if (loadingScreen) {
+        loadingScreen.classList.add('hidden-screen');
+    }
+
+    if (startScreen) {
+        startScreen.classList.remove('hidden-screen');
+    }
+
+    setTimeout(() => {
+        void initEnBlocksMonetization();
+    }, 2500);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener(
+        'DOMContentLoaded',
+        safeAppInit,
+        { once: true }
+    );
+} else {
+    safeAppInit();
 }
