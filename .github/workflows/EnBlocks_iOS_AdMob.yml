@@ -418,42 +418,35 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          settings="$(
-            xcodebuild \
-              -workspace App.xcworkspace \
-              -scheme "$XCODE_SCHEME" \
-              -configuration Release \
-              -destination "generic/platform=iOS" \
-              -showBuildSettings
-          )"
+          settings_file="$RUNNER_TEMP/app-build-settings.txt"
 
-          echo "$settings" | grep -E \
-            "TARGET_NAME|PRODUCT_BUNDLE_IDENTIFIER|CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER"
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -showBuildSettings \
+            > "$settings_file"
 
-          echo "$settings" | grep -q "TARGET_NAME = App" || {
-            echo "::error::App target settings were not found."
-            exit 1
+          cat "$settings_file"
+
+          require_setting() {
+            local expected="$1"
+
+            if ! grep -F -- "$expected" "$settings_file" > /dev/null; then
+              echo "::error::Missing expected Xcode setting: $expected"
+              exit 1
+            fi
           }
 
-          echo "$settings" | grep -q "CODE_SIGN_STYLE = Manual" || {
-            echo "::error::App target is not using Manual signing."
-            exit 1
-          }
+          require_setting "TARGET_NAME = App"
+          require_setting "PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID"
+          require_setting "CODE_SIGN_IDENTITY = Apple Distribution"
+          require_setting "CODE_SIGN_STYLE = Manual"
+          require_setting "DEVELOPMENT_TEAM = $APPLE_TEAM_ID"
+          require_setting "PROVISIONING_PROFILE_SPECIFIER = $PROFILE_UUID"
 
-          echo "$settings" | grep -q "CODE_SIGN_IDENTITY = Apple Distribution" || {
-            echo "::error::App target is not using Apple Distribution."
-            exit 1
-          }
-
-          echo "$settings" | grep -q "DEVELOPMENT_TEAM = $APPLE_TEAM_ID" || {
-            echo "::error::App target does not use the expected Apple team."
-            exit 1
-          }
-
-          echo "$settings" | grep -q "PROVISIONING_PROFILE_SPECIFIER = $PROFILE_UUID" || {
-            echo "::error::App target does not use the installed provisioning profile."
-            exit 1
-          }
+          echo "App target signing settings verified successfully."
 
       - name: Archive iOS app
         working-directory: ${{ env.TARGET_DIR }}/ios/App
