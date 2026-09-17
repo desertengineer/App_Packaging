@@ -21,47 +21,83 @@ jobs:
     name: Build and upload EnBlocks iOS app
     runs-on: macos-15
     environment: MagicBlockBlitz-Environment
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     env:
       NODE_VERSION: "22"
       IOS_DEPLOYMENT_TARGET: "15.0"
       APP_VERSION: "1.0.4"
+
       BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
       APP_NAME: ${{ vars.APP_NAME || 'Magic Block Blitz 2026' }}
       XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+
+      # Your screenshots show APPLE_TEAM_ID in both places.
+      # Use the environment variable first, then the environment secret.
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID || secrets.APPLE_TEAM_ID }}
-      ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || 'ca-app-pub-2658659289706339~4005585343' }}
+
+      ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
+
+      # These names match your repository secrets exactly.
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
 
     steps:
+      # ------------------------------------------------------------
+      # 1. Checkout
+      # ------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ------------------------------------------------------------
+      # 2. Locate EnBlocks
+      # ------------------------------------------------------------
       - name: Locate EnBlocks project
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          if [[ -f "EnBlocks/package.json" ]]; then
+          configured_dir="${{ vars.MONOREPO_DIRECTORY || 'EnBlocks' }}"
+          configured_dir="${configured_dir%/}"
+
+          if [[ -f "$configured_dir/package.json" ]]; then
+            target_dir="$configured_dir"
+          elif [[ -f "EnBlocks/package.json" ]]; then
             target_dir="EnBlocks"
           elif [[ -f "package.json" && -d "ios/App" ]]; then
             target_dir="."
           else
             echo "::error::Could not locate the EnBlocks project."
-            echo "::error::Expected EnBlocks/package.json or package.json at repository root."
             exit 1
           fi
 
           target_dir="$(cd "$target_dir" && pwd)"
+
           echo "TARGET_DIR=$target_dir" >> "$GITHUB_ENV"
           echo "Using project directory: $target_dir"
+
+      # ------------------------------------------------------------
+      # 3. Validate configuration and project structure
+      # ------------------------------------------------------------
+      - name: Validate release configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is missing}"
+          : "${BUNDLE_ID:?BUNDLE_IDENTIFIER is missing}"
+          : "${XCODE_SCHEME:?XCODE_SCHEME is missing}"
+          : "${ADMOB_APP_ID:?ADMOB_APP_ID is missing}"
+
+          echo "Apple Team ID is configured."
+          echo "Bundle ID: $BUNDLE_ID"
+          echo "Xcode scheme: $XCODE_SCHEME"
 
       - name: Validate EnBlocks project structure
         shell: bash
         run: |
           set -Eeuo pipefail
+
           cd "$TARGET_DIR"
 
           required_paths=(
@@ -69,6 +105,7 @@ jobs:
             "package-lock.json"
             "capacitor.config.json"
             "www/index.html"
+            "www/index.js"
             "ios/App/App.xcworkspace"
             "ios/App/App.xcodeproj"
             "ios/App/Podfile"
@@ -82,8 +119,11 @@ jobs:
             fi
           done
 
-          echo "Project structure is valid."
+          echo "EnBlocks project structure is valid."
 
+      # ------------------------------------------------------------
+      # 4. Node.js
+      # ------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -91,14 +131,17 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ env.TARGET_DIR }}/package-lock.json
 
-      - name: Install locked JavaScript dependencies
+      # ------------------------------------------------------------
+      # 5. Install locked dependencies
+      # ------------------------------------------------------------
+      - name: Install JavaScript dependencies
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
           set -Eeuo pipefail
           npm ci --no-audit --no-fund --progress=false
 
-      - name: Verify dependency versions
+      - name: Verify pinned Capacitor dependencies
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
@@ -124,21 +167,14 @@ jobs:
 
             if (!version) {
               console.error(`Missing dependency: ${name}`);
-              console.error("Add it to EnBlocks/package.json and commit package-lock.json.");
               process.exit(1);
             }
 
-            if (
-              version === "latest" ||
-              version === "*" ||
-              version.startsWith("^") ||
-              version.startsWith("~") ||
-              version.includes("||") ||
-              version.includes(">") ||
-              version.includes("<")
-            ) {
+            const isExactVersion = /^\d+\.\d+\.\d+$/.test(version);
+
+            if (!isExactVersion) {
               console.error(
-                `${name} must use an exact pinned version, but found: ${version}`
+                `${name} must use an exact version. Found: ${version}`
               );
               process.exit(1);
             }
@@ -147,8 +183,9 @@ jobs:
           }
           NODE
 
-          npm ci --dry-run --ignore-scripts --no-audit --no-fund
-
+      # ------------------------------------------------------------
+      # 6. Configure Capacitor
+      # ------------------------------------------------------------
       - name: Configure Capacitor
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -184,6 +221,9 @@ jobs:
 
           cat capacitor.config.json
 
+      # ------------------------------------------------------------
+      # 7. Sync existing Capacitor iOS project
+      # ------------------------------------------------------------
       - name: Sync Capacitor iOS project
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -193,6 +233,9 @@ jobs:
           set -Eeuo pipefail
           npx cap sync ios
 
+      # ------------------------------------------------------------
+      # 8. Configure Info.plist
+      # ------------------------------------------------------------
       - name: Configure Info.plist
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -234,11 +277,14 @@ jobs:
             "bool" \
             "false"
 
-          echo "Configured $PLIST_PATH"
+          echo "Configured Info.plist."
           /usr/libexec/PlistBuddy \
             -c "Print :GADApplicationIdentifier" \
             "$PLIST_PATH"
 
+      # ------------------------------------------------------------
+      # 9. CocoaPods
+      # ------------------------------------------------------------
       - name: Install CocoaPods dependencies
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
@@ -250,29 +296,39 @@ jobs:
           if [[ -f "Podfile.lock" ]]; then
             pod install --deployment
           else
-            echo "::warning::Podfile.lock is not committed. Generating it now."
+            echo "::warning::Podfile.lock is not committed."
             pod install
           fi
 
+      # ------------------------------------------------------------
+      # 10. Validate signing secrets
+      # ------------------------------------------------------------
       - name: Validate signing secrets
         shell: bash
         env:
-          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 || secrets.APPLE_DISTRIBUTION_CERT_P12_BASE64 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS || secrets.P12_PASSWORD }}
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE }}
+          ASC_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
         run: |
           set -Eeuo pipefail
 
-          : "${APPLE_TEAM_ID:?Missing APPLE_TEAM_ID secret}"
-          : "${CERTIFICATE_BASE64:?Missing Apple distribution certificate secret}"
-          : "${CERTIFICATE_PASSWORD:?Missing certificate password secret}"
-          : "${PROVISIONING_PROFILE_BASE64:?Missing provisioning profile secret}"
+          : "${APPLE_TEAM_ID:?Missing APPLE_TEAM_ID}"
+          : "${CERTIFICATE_BASE64:?Missing APPLE_CERTIFICATE_P12}"
+          : "${CERTIFICATE_PASSWORD:?Missing APPLE_CERTIFICATE_PASS}"
+          : "${PROVISIONING_PROFILE_BASE64:?Missing BASE64_PROVISIONING_PROFILE}"
+          : "${APP_STORE_CONNECT_KEY_ID:?Missing APP_STORE_CONNECT_KEY_ID}"
+          : "${APP_STORE_CONNECT_ISSUER_ID:?Missing APP_STORE_CONNECT_ISSUER_ID}"
+          : "${ASC_KEY_CONTENT:?Missing APP_STORE_CONNECT_KEY_CONTENT}"
 
+      # ------------------------------------------------------------
+      # 11. Import Apple certificate
+      # ------------------------------------------------------------
       - name: Import Apple distribution certificate
         shell: bash
         env:
-          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 || secrets.APPLE_DISTRIBUTION_CERT_P12_BASE64 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS || secrets.P12_PASSWORD }}
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
           KEYCHAIN_PASSWORD: "temporary-keychain-${{ github.run_id }}"
         run: |
           set -Eeuo pipefail
@@ -316,6 +372,9 @@ jobs:
 
           echo "KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
 
+      # ------------------------------------------------------------
+      # 12. Install provisioning profile
+      # ------------------------------------------------------------
       - name: Install provisioning profile
         shell: bash
         env:
@@ -359,8 +418,11 @@ jobs:
             "$profile_dir/$profile_uuid.mobileprovision"
 
           echo "PROFILE_UUID=$profile_uuid" >> "$GITHUB_ENV"
-          echo "Installed provisioning profile: $profile_uuid"
+          echo "Installed provisioning profile."
 
+      # ------------------------------------------------------------
+      # 13. Set version and build number
+      # ------------------------------------------------------------
       - name: Set iOS version and build number
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
@@ -385,9 +447,9 @@ jobs:
             -c "Add :CFBundleVersion string $BUILD_NUMBER" \
             "$plist"
 
-          echo "Version: $APP_VERSION"
-          echo "Build: $BUILD_NUMBER"
-
+      # ------------------------------------------------------------
+      # 14. Archive
+      # ------------------------------------------------------------
       - name: Archive iOS app
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
@@ -417,6 +479,9 @@ jobs:
 
           test -d "$archive_path/Products/Applications/App.app"
 
+      # ------------------------------------------------------------
+      # 15. Export options
+      # ------------------------------------------------------------
       - name: Create export options
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -428,12 +493,11 @@ jobs:
           import plistlib
           from pathlib import Path
 
-          export_options = {
+          options = {
               "method": "app-store-connect",
               "teamID": os.environ["APPLE_TEAM_ID"],
               "signingStyle": "manual",
               "stripSwiftSymbols": True,
-              "compileBitcode": False,
               "destination": "export",
               "provisioningProfiles": {
                   os.environ["BUNDLE_ID"]: os.environ["PROFILE_UUID"]
@@ -441,11 +505,14 @@ jobs:
           }
 
           with Path("exportOptions.plist").open("wb") as file:
-              plistlib.dump(export_options, file)
+              plistlib.dump(options, file)
           PY
 
           plutil -lint exportOptions.plist
 
+      # ------------------------------------------------------------
+      # 16. Export IPA
+      # ------------------------------------------------------------
       - name: Export IPA
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -472,8 +539,10 @@ jobs:
           fi
 
           echo "IPA_PATH=$ipa_path" >> "$GITHUB_ENV"
-          echo "Created: $ipa_path"
 
+      # ------------------------------------------------------------
+      # 17. Validate signed archive
+      # ------------------------------------------------------------
       - name: Validate signed app
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -496,12 +565,16 @@ jobs:
           )
 
           if [[ "$archive_bundle_id" != "$BUNDLE_ID" ]]; then
-            echo "::error::Archive bundle ID is $archive_bundle_id, expected $BUNDLE_ID"
+            echo "::error::Expected bundle ID $BUNDLE_ID"
+            echo "::error::Found bundle ID $archive_bundle_id"
             exit 1
           fi
 
           echo "Signed app validation passed."
 
+      # ------------------------------------------------------------
+      # 18. Upload IPA artifact
+      # ------------------------------------------------------------
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
@@ -510,17 +583,16 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # ------------------------------------------------------------
+      # 19. Upload to TestFlight
+      # ------------------------------------------------------------
       - name: Upload to TestFlight
         working-directory: ${{ env.TARGET_DIR }}
         env:
-          ASC_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY || secrets.APP_STORE_CONNECT_KEY_CONTENT }}
+          ASC_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
         shell: bash
         run: |
           set -Eeuo pipefail
-
-          : "${APP_STORE_CONNECT_KEY_ID:?Missing APP_STORE_CONNECT_KEY_ID secret}"
-          : "${APP_STORE_CONNECT_ISSUER_ID:?Missing APP_STORE_CONNECT_ISSUER_ID secret}"
-          : "${ASC_KEY_CONTENT:?Missing App Store Connect private key secret}"
 
           api_keys_dir="$HOME/.appstoreconnect/private_keys"
           key_file="$api_keys_dir/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
@@ -542,6 +614,9 @@ jobs:
             --apiKey "$APP_STORE_CONNECT_KEY_ID" \
             --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
 
+      # ------------------------------------------------------------
+      # 20. Cleanup
+      # ------------------------------------------------------------
       - name: Cleanup signing files
         if: always()
         shell: bash
