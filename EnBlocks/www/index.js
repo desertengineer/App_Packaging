@@ -525,26 +525,6 @@ function openSettings() { const el = document.getElementById('settings-screen');
 function closeSettings() { const el = document.getElementById('settings-screen'); if (el) el.classList.add('hidden-screen'); }
 function openRobotMenu() { const s = document.getElementById('start-screen'), r = document.getElementById('robot-menu'); if (s) s.classList.add('hidden-screen'); if (r) r.classList.remove('hidden-screen'); }
 function closeRobotMenu() { const s = document.getElementById('start-screen'), r = document.getElementById('robot-menu'); if (r) r.classList.add('hidden-screen'); if (s) s.classList.remove('hidden-screen'); }
-function safeAppInit() {
-    console.log('EnBlocks web application loaded safely.');
-
-    setupSettingsControls();
-
-    const loadingScreen = document.getElementById('loading-screen');
-    const startScreen = document.getElementById('start-screen');
-
-    if (loadingScreen) {
-        loadingScreen.classList.add('hidden-screen');
-    }
-
-    if (startScreen) {
-        startScreen.classList.remove('hidden-screen');
-    }
-
-    setTimeout(() => {
-        void initEnBlocksMonetization();
-    }, 2500);
-}
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', safeAppInit, { once: true });
