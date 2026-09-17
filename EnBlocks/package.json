@@ -1,10 +1,13 @@
 {
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "6.2.1",
     "ts-node": "^10.9.2",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@capacitor/ios": "^8.5.1"
+    "@capacitor-community/admob": "6.0.0",
+    "@capacitor/core": "6.2.1",
+    "@capacitor/ios": "6.2.1"
   }
 }
