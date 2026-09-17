@@ -7,9 +7,14 @@ install! 'cocoapods',
   :disable_input_output_paths => true
 
 def capacitor_pods
-  pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
-  pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-  pod 'CapacitorCommunityAdmob', :path => '../../node_modules/@capacitor-community/admob'
+  pod 'Capacitor',
+      :path => '../../node_modules/@capacitor/ios'
+
+  pod 'CapacitorCordova',
+      :path => '../../node_modules/@capacitor/ios'
+
+  pod 'CapacitorCommunityAdmob',
+      :path => '../../node_modules/@capacitor-community/admob'
 end
 
 target 'App' do
@@ -23,7 +28,7 @@ post_install do |installer|
     target.build_configurations.each do |config|
       settings = config.build_settings
 
-      # Pods/framework targets must not use the application profile.
+      # Pods must not use the application's provisioning profile.
       settings['CODE_SIGNING_ALLOWED'] = 'NO'
       settings['CODE_SIGNING_REQUIRED'] = 'NO'
       settings['CODE_SIGN_IDENTITY'] = ''
