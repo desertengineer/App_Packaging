@@ -297,6 +297,20 @@ jobs:
 
           echo "CocoaPods installation completed."
 
+      - name: Verify generated CocoaPods project
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          test -d "Pods/Pods.xcodeproj"
+          test -f "Pods/Pods.xcodeproj/project.pbxproj"
+
+          echo "CocoaPods project generated successfully."
+          echo "Pod targets:"
+          grep -E 'name = (Capacitor|CapacitorCommunityAdmob|CapacitorCordova|Pods-App)' \
+            Pods/Pods.xcodeproj/project.pbxproj || true
+
       - name: Validate signing secrets
         shell: bash
         env:
