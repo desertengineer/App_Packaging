@@ -611,7 +611,7 @@ jobs:
           rm -f "$RUNNER_TEMP/profile.mobileprovision"
           rm -f "$RUNNER_TEMP/profile.plist"
       
-          - name: Verify AdMob pod Swift settings
+      - name: Verify AdMob pod Swift settings
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
         run: |
@@ -631,3 +631,19 @@ jobs:
           grep -E \
             "SWIFT_VERSION|SWIFT_STRICT_CONCURRENCY|IPHONEOS_DEPLOYMENT_TARGET|TARGET_NAME" \
             "$settings" || true
+      - name: Print native dependency versions
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          npm ls \
+            @capacitor/core \
+            @capacitor/ios \
+            @capacitor-community/admob
+
+          grep -n \
+            "s.swift_version\|swift_version\|deployment_target" \
+            node_modules/@capacitor-community/admob/CapacitorCommunityAdmob.podspec \
+            node_modules/@capacitor-community/admob/*.podspec \
+            2>/dev/null || true
