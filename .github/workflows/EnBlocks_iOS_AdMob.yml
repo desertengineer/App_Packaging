@@ -284,18 +284,21 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          if [[ -f "Podfile.lock" ]]; then
-            echo "Using committed Podfile.lock"
-            pod install --deployment
-          else
-            echo "Podfile.lock is not present; generating it on the macOS runner"
-            pod install
-          fi
+          test -f Podfile.lock
 
-          test -d "Pods/Pods.xcodeproj"
-          test -f "Podfile.lock"
+          pod install --deployment
 
-          echo "CocoaPods installation completed."
+          test -d Pods/Pods.xcodeproj
+          echo "CocoaPods installation completed using Podfile.lock."
+      
+      - name: Upload generated CocoaPods lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EnBlocks-Podfile-lock-${{ github.run_number }}
+          path: ${{ env.TARGET_DIR }}/ios/App/Podfile.lock
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Verify generated CocoaPods project
         working-directory: ${{ env.TARGET_DIR }}/ios/App
@@ -310,15 +313,6 @@ jobs:
           echo "Pod targets:"
           grep -E 'name = (Capacitor|CapacitorCommunityAdmob|CapacitorCordova|Pods-App)' \
             Pods/Pods.xcodeproj/project.pbxproj || true
-      
-      - name: Upload generated CocoaPods lockfile
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: EnBlocks-Podfile-lock-${{ github.run_number }}
-          path: ${{ env.TARGET_DIR }}/ios/App/Podfile.lock
-          if-no-files-found: warn
-          retention-days: 14
 
       - name: Validate signing secrets
         shell: bash
