@@ -31,27 +31,23 @@ jobs:
       BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
       APP_NAME: ${{ vars.APP_NAME || 'Magic Block Blitz 2026' }}
       XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
-
-      # Your screenshots show APPLE_TEAM_ID in both places.
-      # Use the environment variable first, then the environment secret.
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID || secrets.APPLE_TEAM_ID }}
 
       ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
+      ADMOB_APP_OPEN_AD_ID: ${{ secrets.ADMOB_APP_OPEN_AD_ID }}
+      ADMOB_BANNER_AD_ID: ${{ secrets.ADMOB_BANNER_AD_ID }}
+      ADMOB_INTERSTITIAL_AD_ID: ${{ secrets.ADMOB_INTERSTITIAL_AD_ID }}
+      ADMOB_NATIVE_ADVANCED_AD_ID: ${{ secrets.ADMOB_NATIVE_ADVANCED_AD_ID }}
+      ADMOB_REWARDED_AD_ID: ${{ secrets.ADMOB_REWARDED_AD_ID }}
+      ADMOB_REWARDED_INTERSTITIAL_AD_ID: ${{ secrets.ADMOB_REWARDED_INTERSTITIAL_AD_ID }}
 
-      # These names match your repository secrets exactly.
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
 
     steps:
-      # ------------------------------------------------------------
-      # 1. Checkout
-      # ------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ------------------------------------------------------------
-      # 2. Locate EnBlocks
-      # ------------------------------------------------------------
       - name: Locate EnBlocks project
         shell: bash
         run: |
@@ -72,13 +68,9 @@ jobs:
           fi
 
           target_dir="$(cd "$target_dir" && pwd)"
-
           echo "TARGET_DIR=$target_dir" >> "$GITHUB_ENV"
           echo "Using project directory: $target_dir"
 
-      # ------------------------------------------------------------
-      # 3. Validate configuration and project structure
-      # ------------------------------------------------------------
       - name: Validate release configuration
         shell: bash
         run: |
@@ -88,6 +80,9 @@ jobs:
           : "${BUNDLE_ID:?BUNDLE_IDENTIFIER is missing}"
           : "${XCODE_SCHEME:?XCODE_SCHEME is missing}"
           : "${ADMOB_APP_ID:?ADMOB_APP_ID is missing}"
+          : "${ADMOB_BANNER_AD_ID:?ADMOB_BANNER_AD_ID is missing}"
+          : "${ADMOB_INTERSTITIAL_AD_ID:?ADMOB_INTERSTITIAL_AD_ID is missing}"
+          : "${ADMOB_REWARDED_AD_ID:?ADMOB_REWARDED_AD_ID is missing}"
 
           echo "Apple Team ID is configured."
           echo "Bundle ID: $BUNDLE_ID"
@@ -97,7 +92,6 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           cd "$TARGET_DIR"
 
           required_paths=(
@@ -119,11 +113,8 @@ jobs:
             fi
           done
 
-          echo "EnBlocks project structure is valid."
+          echo "Project structure is valid."
 
-      # ------------------------------------------------------------
-      # 4. Node.js
-      # ------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -131,9 +122,6 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ env.TARGET_DIR }}/package-lock.json
 
-      # ------------------------------------------------------------
-      # 5. Install locked dependencies
-      # ------------------------------------------------------------
       - name: Install JavaScript dependencies
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -149,12 +137,7 @@ jobs:
 
           node <<'NODE'
           const pkg = require("./package.json");
-
-          const deps = {
-            ...(pkg.dependencies || {}),
-            ...(pkg.devDependencies || {})
-          };
-
+          const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
           const required = [
             "@capacitor/core",
             "@capacitor/cli",
@@ -164,18 +147,14 @@ jobs:
 
           for (const name of required) {
             const version = deps[name];
-
             if (!version) {
               console.error(`Missing dependency: ${name}`);
               process.exit(1);
             }
 
             const isExactVersion = /^\d+\.\d+\.\d+$/.test(version);
-
             if (!isExactVersion) {
-              console.error(
-                `${name} must use an exact version. Found: ${version}`
-              );
+              console.error(`${name} must use an exact version. Found: ${version}`);
               process.exit(1);
             }
 
@@ -183,9 +162,6 @@ jobs:
           }
           NODE
 
-      # ------------------------------------------------------------
-      # 6. Configure Capacitor
-      # ------------------------------------------------------------
       - name: Configure Capacitor
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -197,14 +173,12 @@ jobs:
           set -Eeuo pipefail
 
           python3 <<'PY'
-          import json
-          import os
+          import json, os
           from pathlib import Path
 
           config_path = Path("capacitor.config.json")
-
-          with config_path.open("r", encoding="utf-8") as file:
-              config = json.load(file)
+          with config_path.open("r", encoding="utf-8") as f:
+              config = json.load(f)
 
           config["appId"] = os.environ["CONFIG_APP_ID"]
           config["appName"] = os.environ["CONFIG_APP_NAME"]
@@ -214,16 +188,34 @@ jobs:
           admob = plugins.setdefault("AdMob", {})
           admob["appId"] = os.environ["CONFIG_ADMOB_APP_ID"]
 
-          with config_path.open("w", encoding="utf-8") as file:
-              json.dump(config, file, indent=2)
-              file.write("\n")
+          with config_path.open("w", encoding="utf-8") as f:
+              json.dump(config, f, indent=2)
+              f.write("\n")
           PY
 
+          echo "capacitor.config.json:"
           cat capacitor.config.json
 
-      # ------------------------------------------------------------
-      # 7. Sync existing Capacitor iOS project
-      # ------------------------------------------------------------
+      - name: Generate AdMob runtime config
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          cat > www/admob-config.js <<EOF
+          window.__ADMOB_CONFIG__ = {
+            appId: "${ADMOB_APP_ID}",
+            appOpen: "${ADMOB_APP_OPEN_AD_ID}",
+            banner: "${ADMOB_BANNER_AD_ID}",
+            interstitial: "${ADMOB_INTERSTITIAL_AD_ID}",
+            nativeAdvanced: "${ADMOB_NATIVE_ADVANCED_AD_ID}",
+            rewarded: "${ADMOB_REWARDED_AD_ID}",
+            rewardedInterstitial: "${ADMOB_REWARDED_INTERSTITIAL_AD_ID}"
+          };
+          EOF
+
+          echo "Generated www/admob-config.js"
+
       - name: Sync Capacitor iOS project
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -233,9 +225,6 @@ jobs:
           set -Eeuo pipefail
           npx cap sync ios
 
-      # ------------------------------------------------------------
-      # 8. Configure Info.plist
-      # ------------------------------------------------------------
       - name: Configure Info.plist
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -249,42 +238,18 @@ jobs:
             local type="$2"
             local value="$3"
 
-            /usr/libexec/PlistBuddy \
-              -c "Set :$key $value" \
-              "$PLIST_PATH" 2>/dev/null || \
-            /usr/libexec/PlistBuddy \
-              -c "Add :$key $type $value" \
-              "$PLIST_PATH"
+            /usr/libexec/PlistBuddy -c "Set :$key $value" "$PLIST_PATH" 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Add :$key $type $value" "$PLIST_PATH"
           }
 
-          set_plist_value \
-            "GADApplicationIdentifier" \
-            "string" \
-            "$ADMOB_APP_ID"
+          set_plist_value "GADApplicationIdentifier" "string" "$ADMOB_APP_ID"
+          set_plist_value "NSUserTrackingUsageDescription" "string" "This identifier will be used to deliver personalized ads to you."
+          set_plist_value "UIRequiresFullScreen" "bool" "true"
+          set_plist_value "ITSAppUsesNonExemptEncryption" "bool" "false"
 
-          set_plist_value \
-            "NSUserTrackingUsageDescription" \
-            "string" \
-            "This identifier will be used to deliver personalized ads to you."
+          echo "Configured Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :GADApplicationIdentifier" "$PLIST_PATH"
 
-          set_plist_value \
-            "UIRequiresFullScreen" \
-            "bool" \
-            "true"
-
-          set_plist_value \
-            "ITSAppUsesNonExemptEncryption" \
-            "bool" \
-            "false"
-
-          echo "Configured Info.plist."
-          /usr/libexec/PlistBuddy \
-            -c "Print :GADApplicationIdentifier" \
-            "$PLIST_PATH"
-
-      # ------------------------------------------------------------
-      # 9. CocoaPods
-      # ------------------------------------------------------------
       - name: Install CocoaPods dependencies
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
@@ -300,9 +265,6 @@ jobs:
             pod install
           fi
 
-      # ------------------------------------------------------------
-      # 10. Validate signing secrets
-      # ------------------------------------------------------------
       - name: Validate signing secrets
         shell: bash
         env:
@@ -321,9 +283,6 @@ jobs:
           : "${APP_STORE_CONNECT_ISSUER_ID:?Missing APP_STORE_CONNECT_ISSUER_ID}"
           : "${ASC_KEY_CONTENT:?Missing APP_STORE_CONNECT_KEY_CONTENT}"
 
-      # ------------------------------------------------------------
-      # 11. Import Apple certificate
-      # ------------------------------------------------------------
       - name: Import Apple distribution certificate
         shell: bash
         env:
@@ -338,43 +297,16 @@ jobs:
 
           echo "$CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
 
-          security create-keychain \
-            -p "$KEYCHAIN_PASSWORD" \
-            "$keychain_path"
-
-          security set-keychain-settings \
-            -lut 21600 \
-            "$keychain_path"
-
-          security unlock-keychain \
-            -p "$KEYCHAIN_PASSWORD" \
-            "$keychain_path"
-
-          security import \
-            "$certificate_path" \
-            -P "$CERTIFICATE_PASSWORD" \
-            -A \
-            -t cert \
-            -f pkcs12 \
-            -k "$keychain_path"
-
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s \
-            -k "$KEYCHAIN_PASSWORD" \
-            "$keychain_path"
-
-          security list-keychains \
-            -d user \
-            -s "$keychain_path" login.keychain-db
-
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" login.keychain-db
           security default-keychain -s "$keychain_path"
 
           echo "KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
 
-      # ------------------------------------------------------------
-      # 12. Install provisioning profile
-      # ------------------------------------------------------------
       - name: Install provisioning profile
         shell: bash
         env:
@@ -390,22 +322,10 @@ jobs:
 
           echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile_path"
 
-          security cms \
-            -D \
-            -i "$profile_path" \
-            > "$profile_plist"
+          security cms -D -i "$profile_path" > "$profile_plist"
 
-          profile_uuid=$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :UUID" \
-              "$profile_plist"
-          )
-
-          profile_app_id=$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :Entitlements:application-identifier" \
-              "$profile_plist"
-          )
+          profile_uuid=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$profile_plist")
+          profile_app_id=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" "$profile_plist")
 
           if [[ "$profile_app_id" != *"$BUNDLE_ID" ]]; then
             echo "::error::Provisioning profile does not match $BUNDLE_ID"
@@ -413,16 +333,11 @@ jobs:
             exit 1
           fi
 
-          cp \
-            "$profile_path" \
-            "$profile_dir/$profile_uuid.mobileprovision"
+          cp "$profile_path" "$profile_dir/$profile_uuid.mobileprovision"
 
           echo "PROFILE_UUID=$profile_uuid" >> "$GITHUB_ENV"
-          echo "Installed provisioning profile."
+          echo "Installed provisioning profile: $profile_uuid"
 
-      # ------------------------------------------------------------
-      # 13. Set version and build number
-      # ------------------------------------------------------------
       - name: Set iOS version and build number
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
@@ -433,23 +348,12 @@ jobs:
 
           plist="App/Info.plist"
 
-          /usr/libexec/PlistBuddy \
-            -c "Set :CFBundleShortVersionString $APP_VERSION" \
-            "$plist" 2>/dev/null || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :CFBundleShortVersionString string $APP_VERSION" \
-            "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$plist" 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $APP_VERSION" "$plist"
 
-          /usr/libexec/PlistBuddy \
-            -c "Set :CFBundleVersion $BUILD_NUMBER" \
-            "$plist" 2>/dev/null || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :CFBundleVersion string $BUILD_NUMBER" \
-            "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$plist" 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUILD_NUMBER" "$plist"
 
-      # ------------------------------------------------------------
-      # 14. Archive
-      # ------------------------------------------------------------
       - name: Archive iOS app
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
@@ -479,9 +383,6 @@ jobs:
 
           test -d "$archive_path/Products/Applications/App.app"
 
-      # ------------------------------------------------------------
-      # 15. Export options
-      # ------------------------------------------------------------
       - name: Create export options
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -489,8 +390,7 @@ jobs:
           set -Eeuo pipefail
 
           python3 <<'PY'
-          import os
-          import plistlib
+          import os, plistlib
           from pathlib import Path
 
           options = {
@@ -504,15 +404,14 @@ jobs:
               }
           }
 
-          with Path("exportOptions.plist").open("wb") as file:
-              plistlib.dump(options, file)
+          with Path("exportOptions.plist").open("wb") as f:
+              plistlib.dump(options, f)
+
+          print("Created exportOptions.plist")
           PY
 
           plutil -lint exportOptions.plist
 
-      # ------------------------------------------------------------
-      # 16. Export IPA
-      # ------------------------------------------------------------
       - name: Export IPA
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -532,7 +431,6 @@ jobs:
             -exportPath "$output_path"
 
           ipa_path="$(find "$output_path" -maxdepth 1 -name '*.ipa' -print -quit)"
-
           if [[ -z "$ipa_path" || ! -f "$ipa_path" ]]; then
             echo "::error::No IPA was produced."
             exit 1
@@ -540,9 +438,6 @@ jobs:
 
           echo "IPA_PATH=$ipa_path" >> "$GITHUB_ENV"
 
-      # ------------------------------------------------------------
-      # 17. Validate signed archive
-      # ------------------------------------------------------------
       - name: Validate signed app
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -551,19 +446,9 @@ jobs:
 
           app_path="$RUNNER_TEMP/EnBlocks.xcarchive/Products/Applications/App.app"
 
-          codesign \
-            --verify \
-            --deep \
-            --strict \
-            --verbose=2 \
-            "$app_path"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
 
-          archive_bundle_id=$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :CFBundleIdentifier" \
-              "$app_path/Info.plist"
-          )
-
+          archive_bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app_path/Info.plist")
           if [[ "$archive_bundle_id" != "$BUNDLE_ID" ]]; then
             echo "::error::Expected bundle ID $BUNDLE_ID"
             echo "::error::Found bundle ID $archive_bundle_id"
@@ -572,9 +457,6 @@ jobs:
 
           echo "Signed app validation passed."
 
-      # ------------------------------------------------------------
-      # 18. Upload IPA artifact
-      # ------------------------------------------------------------
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
@@ -583,9 +465,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      # ------------------------------------------------------------
-      # 19. Upload to TestFlight
-      # ------------------------------------------------------------
       - name: Upload to TestFlight
         working-directory: ${{ env.TARGET_DIR }}
         env:
@@ -614,19 +493,14 @@ jobs:
             --apiKey "$APP_STORE_CONNECT_KEY_ID" \
             --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
 
-      # ------------------------------------------------------------
-      # 20. Cleanup
-      # ------------------------------------------------------------
       - name: Cleanup signing files
         if: always()
         shell: bash
         run: |
           set +e
-
           if [[ -n "${KEYCHAIN_PATH:-}" ]]; then
             security delete-keychain "$KEYCHAIN_PATH"
           fi
-
           rm -f "$RUNNER_TEMP/build_certificate.p12"
           rm -f "$RUNNER_TEMP/profile.mobileprovision"
           rm -f "$RUNNER_TEMP/profile.plist"
