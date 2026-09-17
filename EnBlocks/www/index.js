@@ -56,7 +56,7 @@ const getAdMob = () => {
     try {
         return window.Capacitor?.Plugins?.AdMob ?? null;
     } catch (error) {
-        console.warn('Unable to access the Capacitor AdMob plugin:', error);
+        console.warn('Unable to access AdMob plugin:', error);
         return null;
     }
 };
@@ -86,12 +86,15 @@ const RewardAdPluginEvents = Object.freeze({
     Rewarded: 'onRewardedVideoAdReward'
 });
 
-// Use test IDs only for development.
-// Replace these values with your real AdMob ad-unit IDs for Release.
+const runtimeAdMobConfig = window.__ADMOB_CONFIG__ || {};
+
 const ADMOB_UNITS = Object.freeze({
-    banner: 'ca-app-pub-3940256099942544/2934735716',
-    interstitial: 'ca-app-pub-3940256099942544/4411468910',
-    rewarded: 'ca-app-pub-3940256099942544/5224354917'
+    appOpen: runtimeAdMobConfig.appOpen || '',
+    banner: runtimeAdMobConfig.banner || '',
+    interstitial: runtimeAdMobConfig.interstitial || '',
+    nativeAdvanced: runtimeAdMobConfig.nativeAdvanced || '',
+    rewarded: runtimeAdMobConfig.rewarded || '',
+    rewardedInterstitial: runtimeAdMobConfig.rewardedInterstitial || ''
 });
 
 let isAdMobInitialized = false;
@@ -103,6 +106,41 @@ let monetizationListenersAttached = false;
 
 let interstitialLoadPromise = null;
 let rewardedLoadPromise = null;
+
+function safeAppInit() {
+    console.log('EnBlocks web application loaded safely.');
+
+    setupSettingsControls();
+
+    const loadingScreen = document.getElementById('loading-screen');
+    const startScreen = document.getElementById('start-screen');
+
+    if (loadingScreen) {
+        loadingScreen.classList.add('hidden-screen');
+    }
+
+    if (startScreen) {
+        startScreen.classList.remove('hidden-screen');
+    }
+
+    setTimeout(() => {
+        void initEnBlocksMonetization();
+    }, 2500);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', safeAppInit, { once: true });
+} else {
+    safeAppInit();
+}
+
+function hasValidAdUnitId(value) {
+    return (
+        typeof value === 'string' &&
+        value.startsWith('ca-app-pub-') &&
+        value.includes('/')
+    );
+}
 
 function isNativeCapacitorApp() {
     return Boolean(
@@ -127,12 +165,20 @@ async function waitForAdMobPlugin(maxAttempts = 20) {
 }
 
 async function initEnBlocksMonetization() {
-    if (isAdMobInitialized || isAdMobInitializing) {
-        return isAdMobInitialized;
-    }
+    if (isAdMobInitialized) return true;
+    if (isAdMobInitializing) return false;
 
     if (!isNativeCapacitorApp()) {
-        console.info('Running in a browser; AdMob initialization skipped.');
+        console.info('Browser environment detected; AdMob disabled.');
+        return false;
+    }
+
+    if (
+        !hasValidAdUnitId(ADMOB_UNITS.banner) ||
+        !hasValidAdUnitId(ADMOB_UNITS.interstitial) ||
+        !hasValidAdUnitId(ADMOB_UNITS.rewarded)
+    ) {
+        console.warn('Required AdMob ad-unit IDs are not configured.');
         return false;
     }
 
@@ -142,7 +188,7 @@ async function initEnBlocksMonetization() {
         const AdMob = await waitForAdMobPlugin();
 
         if (!AdMob) {
-            console.warn('AdMob plugin is unavailable; monetization is disabled.');
+            console.warn('AdMob plugin is unavailable.');
             return false;
         }
 
@@ -152,11 +198,9 @@ async function initEnBlocksMonetization() {
         });
 
         isAdMobInitialized = true;
-
         await attachAdEventListeners();
 
-        // Do not request native ads during the first WebView layout pass.
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1500));
 
         void preloadInterstitialAd();
         void preloadRewardedAd();
@@ -165,8 +209,8 @@ async function initEnBlocksMonetization() {
         console.info('AdMob initialized successfully.');
         return true;
     } catch (error) {
-        console.error('AdMob initialization failed:', error);
         isAdMobInitialized = false;
+        console.error('AdMob initialization failed:', error);
         return false;
     } finally {
         isAdMobInitializing = false;
@@ -191,7 +235,7 @@ async function showBannerAd() {
         isBannerShowing = true;
         return true;
     } catch (error) {
-        console.error('Failed to show banner ad:', error);
+        console.error('Failed to show banner:', error);
         return false;
     }
 }
@@ -200,13 +244,15 @@ async function hideBannerAd() {
     const AdMob = getAdMob();
 
     if (!AdMob || !isBannerShowing) {
-        return;
+        return false;
     }
 
     try {
         await AdMob.hideBanner();
+        return true;
     } catch (error) {
-        console.warn('Failed to hide banner ad:', error);
+        console.warn('Failed to hide banner:', error);
+        return false;
     } finally {
         isBannerShowing = false;
     }
@@ -215,7 +261,12 @@ async function hideBannerAd() {
 async function preloadInterstitialAd() {
     const AdMob = getAdMob();
 
-    if (!AdMob || !isAdMobInitialized || isInterstitialLoaded) {
+    if (
+        !AdMob ||
+        !isAdMobInitialized ||
+        isInterstitialLoaded ||
+        !hasValidAdUnitId(ADMOB_UNITS.interstitial)
+    ) {
         return false;
     }
 
@@ -233,7 +284,7 @@ async function preloadInterstitialAd() {
             return true;
         } catch (error) {
             isInterstitialLoaded = false;
-            console.error('Failed to prepare interstitial ad:', error);
+            console.error('Failed to prepare interstitial:', error);
             return false;
         } finally {
             interstitialLoadPromise = null;
@@ -262,7 +313,7 @@ async function showInterstitialAd() {
         return true;
     } catch (error) {
         isInterstitialLoaded = false;
-        console.error('Failed to show interstitial ad:', error);
+        console.error('Failed to show interstitial:', error);
         void preloadInterstitialAd();
         return false;
     }
@@ -271,7 +322,12 @@ async function showInterstitialAd() {
 async function preloadRewardedAd() {
     const AdMob = getAdMob();
 
-    if (!AdMob || !isAdMobInitialized || isRewardedLoaded) {
+    if (
+        !AdMob ||
+        !isAdMobInitialized ||
+        isRewardedLoaded ||
+        !hasValidAdUnitId(ADMOB_UNITS.rewarded)
+    ) {
         return false;
     }
 
@@ -302,24 +358,21 @@ async function preloadRewardedAd() {
 async function showRewardedAd(onRewardGrantedCallback) {
     const AdMob = getAdMob();
 
-    // Never grant a reward when the ad is unavailable.
     if (!AdMob || !isAdMobInitialized || !isRewardedLoaded) {
         console.warn('Rewarded ad is not ready.');
         void preloadRewardedAd();
         return false;
     }
 
-    let rewardGranted = false;
     let rewardListener = null;
     let dismissedListener = null;
+    let rewardGranted = false;
 
     try {
         rewardListener = await AdMob.addListener(
             RewardAdPluginEvents.Rewarded,
             reward => {
-                if (rewardGranted) {
-                    return;
-                }
+                if (rewardGranted) return;
 
                 rewardGranted = true;
 
@@ -337,7 +390,6 @@ async function showRewardedAd(onRewardGrantedCallback) {
         );
 
         await AdMob.showRewardVideoAd();
-
         return true;
     } catch (error) {
         console.error('Failed to show rewarded ad:', error);
@@ -403,11 +455,10 @@ async function attachAdEventListeners() {
 
         monetizationListenersAttached = true;
     } catch (error) {
-        console.warn('Could not attach AdMob event listeners:', error);
+        console.warn('Could not attach AdMob listeners:', error);
     }
 }
 
-// Make functions available to HTML onclick handlers.
 window.initEnBlocksMonetization = initEnBlocksMonetization;
 window.showBannerAd = showBannerAd;
 window.hideBannerAd = hideBannerAd;
@@ -474,14 +525,60 @@ function openSettings() { const el = document.getElementById('settings-screen');
 function closeSettings() { const el = document.getElementById('settings-screen'); if (el) el.classList.add('hidden-screen'); }
 function openRobotMenu() { const s = document.getElementById('start-screen'), r = document.getElementById('robot-menu'); if (s) s.classList.add('hidden-screen'); if (r) r.classList.remove('hidden-screen'); }
 function closeRobotMenu() { const s = document.getElementById('start-screen'), r = document.getElementById('robot-menu'); if (r) r.classList.add('hidden-screen'); if (s) s.classList.remove('hidden-screen'); }
+function safeAppInit() {
+    console.log('EnBlocks web application loaded safely.');
 
-const musicSlider = document.getElementById('music-slider');
-if (musicSlider) {
-    musicSlider.addEventListener('input', (e) => { musicVol = e.target.value / 100; const lbl = document.getElementById('music-val'); if (lbl) lbl.innerText = `${e.target.value}%`; });
+    setupSettingsControls();
+
+    const loadingScreen = document.getElementById('loading-screen');
+    const startScreen = document.getElementById('start-screen');
+
+    if (loadingScreen) {
+        loadingScreen.classList.add('hidden-screen');
+    }
+
+    if (startScreen) {
+        startScreen.classList.remove('hidden-screen');
+    }
+
+    setTimeout(() => {
+        void initEnBlocksMonetization();
+    }, 2500);
 }
-const sfxSlider = document.getElementById('sfx-slider');
-if (sfxSlider) {
-    sfxSlider.addEventListener('input', (e) => { sfxVol = e.target.value / 100; const lbl = document.getElementById('sfx-val'); if (lbl) lbl.innerText = `${e.target.value}%`; playTone(400, 'sine', 0.1); });
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', safeAppInit, { once: true });
+} else {
+    safeAppInit();
+}
+function setupSettingsControls() {
+    const musicSlider = document.getElementById('music-slider');
+
+    if (musicSlider) {
+        musicSlider.addEventListener('input', (event) => {
+            musicVol = Number(event.target.value) / 100;
+
+            const label = document.getElementById('music-val');
+            if (label) {
+                label.innerText = `${event.target.value}%`;
+            }
+        });
+    }
+
+    const sfxSlider = document.getElementById('sfx-slider');
+
+    if (sfxSlider) {
+        sfxSlider.addEventListener('input', (event) => {
+            sfxVol = Number(event.target.value) / 100;
+
+            const label = document.getElementById('sfx-val');
+            if (label) {
+                label.innerText = `${event.target.value}%`;
+            }
+
+            playTone(400, 'sine', 0.1);
+        });
+    }
 }
 
 function returnToMenu() {
