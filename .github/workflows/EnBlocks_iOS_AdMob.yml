@@ -590,6 +590,16 @@ jobs:
           /usr/libexec/PlistBuddy \
             -c "Add :CFBundleVersion string $BUILD_NUMBER" \
             "$plist"
+      - name: Install CocoaPods dependencies
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
+        env:
+          COCOAPODS_DISABLE_STATS: "true"
+        run: |
+          set -Eeuo pipefail
+
+          pod install --repo-update
+          test -d Pods/Pods.xcodeproj
 
       - name: Archive iOS app
         working-directory: ${{ env.TARGET_DIR }}/ios/App
