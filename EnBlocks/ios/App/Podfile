@@ -7,14 +7,9 @@ install! 'cocoapods',
   :disable_input_output_paths => true
 
 def capacitor_pods
-  pod 'Capacitor',
-      :path => '../../node_modules/@capacitor/ios'
-
-  pod 'CapacitorCordova',
-      :path => '../../node_modules/@capacitor/ios'
-
-  pod 'CapacitorCommunityAdmob',
-      :path => '../../node_modules/@capacitor-community/admob'
+  pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
+  pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
+  pod 'CapacitorCommunityAdmob', :path => '../../node_modules/@capacitor-community/admob'
 end
 
 target 'App' do
@@ -28,16 +23,15 @@ post_install do |installer|
     target.build_configurations.each do |config|
       settings = config.build_settings
 
-      # Never sign CocoaPods/framework/resource-bundle targets.
       settings['CODE_SIGNING_ALLOWED'] = 'NO'
       settings['CODE_SIGNING_REQUIRED'] = 'NO'
-      settings['CODE_SIGN_IDENTITY'] = '-'
+      settings['CODE_SIGN_IDENTITY'] = ''
       settings['DEVELOPMENT_TEAM'] = ''
       settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
       settings['PROVISIONING_PROFILE'] = ''
 
       settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
-      settings['SWIFT_VERSION'] = '5.0'
+      settings['SWIFT_VERSION'] = '5.9'
       settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
       settings['CLANG_ENABLE_MODULES'] = 'YES'
     end
