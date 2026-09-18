@@ -312,6 +312,12 @@ jobs:
           set_value UIRequiresFullScreen bool true
           set_value ITSAppUsesNonExemptEncryption bool false
 
+      - name: Install xcodeproj Ruby gem
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gem install xcodeproj --no-document
+
       - name: Install CocoaPods dependencies
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
@@ -324,6 +330,46 @@ jobs:
 
           test -d Pods/Pods.xcodeproj
           test -f Podfile.lock
+
+      - name: Disable signing for every CocoaPods target
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          ruby <<'RUBY'
+          require 'xcodeproj'
+
+          pods_project_path = 'Pods/Pods.xcodeproj'
+          project = Xcodeproj::Project.open(pods_project_path)
+
+          project.targets.each do |target|
+            target.build_configurations.each do |configuration|
+              settings = configuration.build_settings
+
+              settings['CODE_SIGNING_ALLOWED'] = 'NO'
+              settings['CODE_SIGNING_REQUIRED'] = 'NO'
+              settings['CODE_SIGN_IDENTITY'] = '-'
+              settings['DEVELOPMENT_TEAM'] = ''
+              settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
+              settings['PROVISIONING_PROFILE'] = ''
+            end
+          end
+
+          project.save
+          puts 'Disabled signing for all CocoaPods targets.'
+          RUBY
+
+          test -f Pods/Pods.xcodeproj/project.pbxproj
+
+          if grep -n \
+            -E 'CODE_SIGNING_ALLOWED = YES|CODE_SIGNING_REQUIRED = YES|CODE_SIGN_IDENTITY = "iOS Development"' \
+            Pods/Pods.xcodeproj/project.pbxproj; then
+            echo "::error::Signing settings remain enabled in the Pods project."
+            exit 1
+          fi
+
+          echo "CocoaPods signing settings verified."
 
       - name: Validate signing secrets
         shell: bash
@@ -571,7 +617,6 @@ jobs:
 
           if [[ "$build_status" -ne 0 ]]; then
             echo "===== BUILD DIAGNOSTICS ====="
-
             grep -n -E \
               "error:|warning:|SwiftCompile|provision|profile|signing" \
               "$log_path" \
