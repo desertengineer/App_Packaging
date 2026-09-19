@@ -588,6 +588,7 @@ jobs:
           /usr/libexec/PlistBuddy \
             -c "Add :CFBundleVersion string $BUILD_NUMBER" \
             "$plist"
+      
       - name: Update CocoaPods repository
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         run: pod repo update
@@ -600,10 +601,16 @@ jobs:
         run: |
           set -Eeuo pipefail
 
+          # Clean build
           rm -rf Pods/ || true
           rm -f Podfile.lock || true
-          pod install --deployment
+
+          # Fresh install - NO --deployment flag
+          pod install
+
+          # Verify
           test -d Pods/Pods.xcodeproj
+          test -f Podfile.lock
 
       - name: Archive iOS app
         working-directory: ${{ env.TARGET_DIR }}/ios/App
