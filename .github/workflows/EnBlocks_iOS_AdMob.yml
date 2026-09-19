@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build-ios:
     name: Build and upload EnBlocks iOS app
-    runs-on: macos-15
+    runs-on: macos-14
     environment: MagicBlockBlitz-Environment
     timeout-minutes: 60
 
