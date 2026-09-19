@@ -325,11 +325,10 @@ jobs:
           COCOAPODS_DISABLE_STATS: "true"
         run: |
           set -Eeuo pipefail
-
-          pod install --deployment
-
+          rm -rf Pods/ || true
+          rm -f Podfile.lock || true
+          pod install  # ✅ FIX: Remove --deployment flag
           test -d Pods/Pods.xcodeproj
-          test -f Podfile.lock
 
       - name: Disable signing for every CocoaPods target
         working-directory: ${{ env.TARGET_DIR }}/ios/App
