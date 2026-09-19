@@ -27,12 +27,10 @@ jobs:
       NODE_VERSION: "22"
       IOS_DEPLOYMENT_TARGET: "15.0"
       APP_VERSION: "1.0.4"
-
-      BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || 'com.bekeiratapps.magicblockblitz2026' }}
-      APP_NAME: ${{ vars.APP_NAME || 'EnBlocks' }}
-      XCODE_SCHEME: ${{ vars.XCODE_SCHEME || 'App' }}
+      BUNDLE_ID: com.bekeiratapps.magicblockblitz2026
+      APP_NAME: Magic Block Blitz 2026
+      XCODE_SCHEME: App
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID || secrets.APPLE_TEAM_ID }}
-
       ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
       ADMOB_APP_OPEN_AD_ID: ${{ secrets.ADMOB_APP_OPEN_AD_ID }}
       ADMOB_BANNER_AD_ID: ${{ secrets.ADMOB_BANNER_AD_ID }}
@@ -40,7 +38,9 @@ jobs:
       ADMOB_NATIVE_ADVANCED_AD_ID: ${{ secrets.ADMOB_NATIVE_ADVANCED_AD_ID }}
       ADMOB_REWARDED_AD_ID: ${{ secrets.ADMOB_REWARDED_AD_ID }}
       ADMOB_REWARDED_INTERSTITIAL_AD_ID: ${{ secrets.ADMOB_REWARDED_INTERSTITIAL_AD_ID }}
-
+      CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+      CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
+      KEYCHAIN_PASSWORD: temporary-${{ github.run_id }}
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
 
