@@ -98,7 +98,6 @@ jobs:
             "ios/App/App.xcworkspace"
             "ios/App/App.xcodeproj"
             "ios/App/Podfile"
-            "ios/App/Podfile.lock"
             "ios/App/App/Info.plist"
           )
 
@@ -590,6 +589,10 @@ jobs:
           /usr/libexec/PlistBuddy \
             -c "Add :CFBundleVersion string $BUILD_NUMBER" \
             "$plist"
+      - name: Update CocoaPods repository
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        run: pod repo update
+
       - name: Install CocoaPods dependencies
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
@@ -598,7 +601,9 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          pod install --repo-update
+          rm -rf Pods/ || true
+          rm -f Podfile.lock || true
+          pod install --deployment
           test -d Pods/Pods.xcodeproj
 
       - name: Archive iOS app
@@ -626,6 +631,8 @@ jobs:
           set -e
 
           if [[ "$build_status" -ne 0 ]]; then
+            echo "===== SWIFT ERRORS WITH CONTEXT ====="
+            grep -n -C 20 -E "error:|fatal error:" "$log_path" || true
             echo "===== BUILD DIAGNOSTICS ====="
             grep -n -E \
               "error:|warning:|SwiftCompile|provision|profile|signing" \
