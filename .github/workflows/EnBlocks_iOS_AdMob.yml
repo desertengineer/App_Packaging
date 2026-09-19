@@ -16,7 +16,7 @@ concurrency:
   group: enblocks-ios-release
   cancel-in-progress: false
 
-jobs: 
+jobs:
   build-ios:
     name: Build and upload EnBlocks iOS app
     runs-on: macos-15
@@ -588,7 +588,7 @@ jobs:
           /usr/libexec/PlistBuddy \
             -c "Add :CFBundleVersion string $BUILD_NUMBER" \
             "$plist"
-      
+
       - name: Update CocoaPods repository
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         run: pod repo update
