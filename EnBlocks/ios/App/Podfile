@@ -19,13 +19,12 @@ target 'App' do
     # Keep Capacitor's deployment target assertion
     assertDeploymentTarget(installer)
 
-    # Apply settings to ALL POD TARGETS (this fixes CapacitorCommunityAdmob)
+    # Apply settings to ALL POD TARGETS
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
-        # CRITICAL: Set Swift version for ALL pod targets
-        config.build_settings['SWIFT_VERSION'] = '5.0'
+        # REMOVED: SWIFT_VERSION override - let Xcode use its default (5.9)
 
-        # Fix optimization level
+        # Fix optimization level for Debug/Release
         if config.name.include?('Debug')
           config.build_settings['SWIFT_OPTIMIZATION_LEVEL'] = '-Onone'
         else
