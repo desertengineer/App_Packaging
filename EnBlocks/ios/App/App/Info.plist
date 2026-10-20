@@ -6,7 +6,7 @@
 	<string>en</string>
 
 	<key>CFBundleDisplayName</key>
-	<string>EnBlocks</string>
+	<string>Magic Block Blitz 2026</string>
 
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
@@ -39,7 +39,10 @@
 	<true/>
 
 	<key>NSUserTrackingUsageDescription</key>
-	<string>This identifier will be used to deliver personalized ads to you.</string>
+	<array> 
+		<string>This identifier will be used to deliver personalized ads to you.</string>
+		<string>This app uses location for ad targeting</string>
+	</array>
 
 	<key>UIRequiresFullScreen</key>
 	<true/>
