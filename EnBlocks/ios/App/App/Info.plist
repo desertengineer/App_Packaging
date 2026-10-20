@@ -39,10 +39,7 @@
 	<true/>
 
 	<key>NSUserTrackingUsageDescription</key>
-	<array> 
-		<string>This identifier will be used to deliver personalized ads to you.</string>
-		<string>This app uses location for ad targeting</string>
-	</array>
+	<string>This identifier will be used to deliver personalized ads to you. This app uses location for ad targeting.</string>
 
 	<key>UIRequiresFullScreen</key>
 	<true/>
