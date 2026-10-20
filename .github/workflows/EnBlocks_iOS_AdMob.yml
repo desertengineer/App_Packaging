@@ -1,4 +1,4 @@
-name: EnBlocks - iOS App Store
+name: EnBlocks - iOS App Store (AdMob)
 
 on:
   workflow_dispatch:
@@ -386,7 +386,7 @@ jobs:
           EOF
 
           echo "PrivacyInfo.xcprivacy created successfully"
-          
+
       - name: Install xcodeproj Ruby gem
         shell: bash
         run: |
