@@ -1,0 +1,82 @@
+name: Check Xcode 26 compatibility
+
+on:
+  workflow_dispatch:
+
+jobs:
+  xcode-check:
+    name: Verify runner and Xcode
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Print runner details
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          echo "=== Runner OS ==="
+          sw_vers
+
+          echo
+          echo "=== Current xcode-select path ==="
+          xcode-select -p || true
+
+          echo
+          echo "=== Installed Xcode apps ==="
+          ls -1 /Applications/Xcode*.app 2>/dev/null || echo "No Xcode app found"
+
+      - name: Print Xcode versions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          echo "=== xcodebuild version ==="
+          xcodebuild -version || true
+
+          echo
+          echo "=== xcrun SDK version ==="
+          xcrun --show-sdk-version || true
+
+          echo
+          echo "=== Available toolchains ==="
+          ls -1 /Applications 2>/dev/null | grep -i xcode || true
+
+      - name: Validate Xcode 26 and iOS SDK 26+
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          echo "=== Validation started ==="
+
+          if ! command -v xcodebuild >/dev/null 2>&1; then
+            echo "::error::xcodebuild is not installed on this runner."
+            exit 1
+          fi
+
+          xcode_version="$(xcodebuild -version | head -n 1 | awk '{print $3}')"
+          echo "Detected Xcode version: $xcode_version"
+
+          sdk_version="$(xcrun --show-sdk-version || true)"
+          echo "Detected SDK version: ${sdk_version:-not found}"
+
+          if [[ -z "$sdk_version" ]]; then
+            echo "::error::SDK could not be detected."
+            exit 1
+          fi
+
+          sdk_major="${sdk_version%%.*}"
+
+          if [[ "$xcode_version" != 26* && "$XCODE_VERSION" != 26* ]]; then
+            echo "::error::Runner does not have Xcode 26 installed."
+            echo "Installed Xcode version: $xcode_version"
+            exit 1
+          fi
+
+          if (( sdk_major < 26 )); then
+            echo "::error::SDK is older than iOS 26. App Store Connect requires iOS SDK 26 or newer."
+            echo "Detected SDK version: $sdk_version"
+            exit 1
+          fi
+
+          echo "PASS: Xcode 26+ and iOS SDK 26+ are available."
