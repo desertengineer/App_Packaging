@@ -57,26 +57,36 @@ jobs:
           candidates=(
             "/Applications/Xcode_26.0.app/Contents/Developer"
             "/Applications/Xcode_26.app/Contents/Developer"
+            "/Applications/Xcode.app/Contents/Developer"
           )
 
           selected=""
           for candidate in "${candidates[@]}"; do
             if [[ -d "$candidate" ]]; then
-              selected="$candidate"
-              break
+              # Verify that this Xcode instance supports iOS 26+ SDK
+              sdk_path="$candidate/Platforms/iPhoneOS.platform/Developer/SDKs"
+              if ls "$sdk_path" | grep -q "iPhoneOS26"; then
+                selected="$candidate"
+                break
+              elif [[ -z "$selected" ]]; then
+                # Fallback to standard path if exact version string varies
+                selected="$candidate"
+              fi
             fi
           done
 
           if [[ -z "$selected" ]]; then
-            echo "::error::Xcode 26 was not found on the runner. App Store Connect requires Xcode 26 or later."
+            echo "::error::Xcode 26 or later was not found on the runner."
             exit 1
           fi
 
           sudo xcode-select -switch "$selected"
           echo "DEVELOPER_DIR=$selected" >> "$GITHUB_ENV"
 
+          echo "=== Xcode & SDK Information ==="
           xcodebuild -version
-          xcrun --show-sdk-version
+          xcrun --sdk iphoneos --show-sdk-path
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Verify Xcode SDK version
         shell: bash
@@ -747,6 +757,7 @@ jobs:
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath "$archive_path" \
+            SDKROOT=iphoneos \
             IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
             COMPILER_INDEX_STORE_ENABLE=NO \
             2>&1 | tee "$log_path"
@@ -755,17 +766,8 @@ jobs:
           set -e
 
           if [[ "$build_status" -ne 0 ]]; then
-            echo "===== SWIFT ERRORS WITH CONTEXT ====="
-            grep -n -C 20 -E "error:|fatal error:" "$log_path" || true
-            echo "===== BUILD DIAGNOSTICS ====="
-            grep -n -E \
-              "error:|warning:|SwiftCompile|provision|profile|signing" \
-              "$log_path" \
-              | tail -n 250 || true
-
             echo "===== LAST 300 BUILD LOG LINES ====="
             tail -n 300 "$log_path"
-
             exit "$build_status"
           fi
 
