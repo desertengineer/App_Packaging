@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 60
 
     env:
-      NODE_VERSION: "22"
+      NODE_VERSION: "24"
       IOS_DEPLOYMENT_TARGET: "15.0"
       APP_VERSION: "1.0.4"
       BUNDLE_ID: com.bekeiratapps.magicblockblitz2026
@@ -43,10 +43,55 @@ jobs:
       KEYCHAIN_PASSWORD: temporary-${{ github.run_id }}
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      XCODE_MAJOR_REQUIRED: "26"
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Select Xcode 26 for App Store compliance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          candidates=(
+            "/Applications/Xcode_26.0.app/Contents/Developer"
+            "/Applications/Xcode_26.app/Contents/Developer"
+          )
+
+          selected=""
+          for candidate in "${candidates[@]}"; do
+            if [[ -d "$candidate" ]]; then
+              selected="$candidate"
+              break
+            fi
+          done
+
+          if [[ -z "$selected" ]]; then
+            echo "::error::Xcode 26 was not found on the runner. App Store Connect requires Xcode 26 or later."
+            exit 1
+          fi
+
+          sudo xcode-select -switch "$selected"
+          echo "DEVELOPER_DIR=$selected" >> "$GITHUB_ENV"
+
+          xcodebuild -version
+          xcrun --show-sdk-version
+
+      - name: Verify Xcode SDK version
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          sdk_version="$(xcrun --show-sdk-version)"
+          major_version="${sdk_version%%.*}"
+
+          echo "Detected SDK version: $sdk_version"
+
+          if (( major_version < XCODE_MAJOR_REQUIRED )); then
+            echo "::error::App Store Connect requires iOS SDK 26 or newer. Detected: $sdk_version"
+            exit 1
+          fi
 
       - name: Locate EnBlocks project
         shell: bash
@@ -109,7 +154,7 @@ jobs:
           done
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -310,7 +355,7 @@ jobs:
           set_value NSUserTrackingUsageDescription string "This identifier will be used to deliver personalized ads to you."
           set_value UIRequiresFullScreen bool true
           set_value ITSAppUsesNonExemptEncryption bool false
-      
+
       - name: Create PrivacyInfo.xcprivacy for AdMob
         working-directory: ${{ env.TARGET_DIR }}/ios/App/App
         shell: bash
@@ -402,7 +447,7 @@ jobs:
           set -Eeuo pipefail
           rm -rf Pods/ || true
           rm -f Podfile.lock || true
-          pod install  # ✅ FIX: Remove --deployment flag
+          pod install
           test -d Pods/Pods.xcodeproj
 
       - name: Disable signing for every CocoaPods target
@@ -677,14 +722,11 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          # Clean build
           rm -rf Pods/ || true
           rm -f Podfile.lock || true
 
-          # Fresh install - NO --deployment flag
           pod install
 
-          # Verify
           test -d Pods/Pods.xcodeproj
           test -f Podfile.lock
 
@@ -828,7 +870,7 @@ jobs:
           fi
 
       - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: EnBlocks-iOS-${{ github.run_number }}
           path: ${{ env.TARGET_DIR }}/ios/App/output/*.ipa
@@ -837,7 +879,7 @@ jobs:
 
       - name: Upload generated CocoaPods lockfile
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: EnBlocks-Podfile-lock-${{ github.run_number }}
           path: ${{ env.TARGET_DIR }}/ios/App/Podfile.lock
