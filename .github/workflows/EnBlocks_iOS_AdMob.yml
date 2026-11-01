@@ -340,6 +340,15 @@ jobs:
           set -Eeuo pipefail
           npx cap sync ios
 
+      - name: Generate Capacitor Assets
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if npx cap-assets --version >/dev/null 2>&1; then
+            npx cap-assets generate --ios
+          fi
+          
       - name: Configure Info.plist
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
