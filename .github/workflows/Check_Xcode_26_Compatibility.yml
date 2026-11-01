@@ -54,11 +54,22 @@ jobs:
             exit 1
           fi
 
-          xcode_version="$(xcodebuild -version | head -n 1 | awk '{print $3}')"
-          echo "Detected Xcode version: $xcode_version"
+          xcode_version="$(xcodebuild -version 2>/dev/null | head -n 1 | awk '{print $3}' || true)"
+          sdk_version="$(xcrun --show-sdk-version 2>/dev/null || true)"
 
-          sdk_version="$(xcrun --show-sdk-version || true)"
+          echo "Detected Xcode version: ${xcode_version:-not found}"
           echo "Detected SDK version: ${sdk_version:-not found}"
+
+          if [[ -z "$xcode_version" ]]; then
+            echo "::error::Xcode is not selected or not installed on this runner."
+            exit 1
+          fi
+
+          if [[ "$xcode_version" != 26* ]]; then
+            echo "::error::Runner does not have Xcode 26 installed."
+            echo "Installed Xcode version: $xcode_version"
+            exit 1
+          fi
 
           if [[ -z "$sdk_version" ]]; then
             echo "::error::SDK could not be detected."
@@ -66,12 +77,6 @@ jobs:
           fi
 
           sdk_major="${sdk_version%%.*}"
-
-          if [[ "$xcode_version" != 26* && "$XCODE_VERSION" != 26* ]]; then
-            echo "::error::Runner does not have Xcode 26 installed."
-            echo "Installed Xcode version: $xcode_version"
-            exit 1
-          fi
 
           if (( sdk_major < 26 )); then
             echo "::error::SDK is older than iOS 26. App Store Connect requires iOS SDK 26 or newer."
