@@ -369,10 +369,15 @@ jobs:
         run: |
           set -Eeuo pipefail
           plist="App/Info.plist"
+          build_num="$(date +%s)"
+
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$plist" 2>/dev/null || \
           /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $APP_VERSION" "$plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$plist" 2>/dev/null || \
-          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUILD_NUMBER" "$plist"
+
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build_num" "$plist" 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $build_num" "$plist"
+
+          echo "Assigned Build Number: $build_num"
 
       - name: Install CocoaPods dependencies
         working-directory: ${{ env.TARGET_DIR }}/ios/App
