@@ -1,0 +1,17 @@
+{
+  "name": "Tile 2048 Master",
+  "version": "1.0",
+  "description": "Challenge your brain with Tile Master 2048! Slide matching number tiles to merge them and chase your ultimate high score in this strategic block puzzle game.",
+  "main": "www/index.js",
+  "scripts": {
+    "build": "echo 'No build step required'"
+  },
+  "dependencies": {
+    "@capacitor/core": "7.0.0",
+    "@capacitor/ios": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "7.0.0"
+  }
+}

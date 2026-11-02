@@ -1,0 +1,98 @@
+{
+  "name": "@capacitor/assets",
+  "version": "4.0.0",
+  "description": "Generate icon and splash screen images for Capacitor apps",
+  "homepage": "https://ionicframework.com",
+  "author": "Ionic Team <hi@ionicframework.com>",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "bin": {
+    "capacitor-assets": "./bin/capacitor-assets"
+  },
+  "scripts": {
+    "prepare": "husky || true",
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest --maxWorkers=4",
+    "lint": "npm run eslint && npm run prettier -- --check",
+    "fmt": "npm run prettier -- --write",
+    "eslint": "eslint .",
+    "prettier": "prettier 'src/**/*.ts'",
+    "prepublishOnly": "npm run build"
+  },
+  "prettier": "@ionic/prettier-config",
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ionic-team/capacitor-assets.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ionic-team/capacitor-assets/issues"
+  },
+  "keywords": [
+    "ionic",
+    "capacitor",
+    "resources",
+    "mobile",
+    "native",
+    "icon",
+    "splash screen"
+  ],
+  "dependencies": {
+    "@ionic/cli-framework-output": "2.2.8",
+    "@ionic/utils-array": "2.1.6",
+    "@ionic/utils-fs": "3.1.7",
+    "@trapezedev/project": "^7.0.10",
+    "commander": "8.3.0",
+    "debug": "4.3.4",
+    "fs-extra": "10.1.0",
+    "node-fetch": "2.7.0",
+    "node-html-parser": "5.4.2",
+    "sharp": "^0.35.5",
+    "tslib": "2.6.2",
+    "yargs": "17.7.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
+    "@changesets/cli": "2.26.2",
+    "@ionic/eslint-config": "^0.5.0",
+    "@ionic/prettier-config": "4.0.0",
+    "@types/debug": "4.1.8",
+    "@types/fs-extra": "9.0.13",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.19.43",
+    "@types/node-fetch": "2.6.5",
+    "@types/plist": "3.0.2",
+    "@types/rimraf": "3.0.2",
+    "@types/slice-ansi": "5.0.0",
+    "eslint": "^10.0.0",
+    "husky": "^9.1.7",
+    "jest": "^30.5.2",
+    "np": "7.7.0",
+    "prettier": "3.0.3",
+    "rimraf": "3.0.2",
+    "tempy": "1.0.1",
+    "ts-jest": "^29.4.14",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "@capacitor/cli": {
+      "plist": {
+        "@xmldom/xmldom": "0.8.4"
+      }
+    },
+    "@trapezedev/project": {
+      "@xmldom/xmldom": "0.7.7",
+      "mergexml": {
+        "@xmldom/xmldom": "0.7.7"
+      }
+    }
+  }
+}
