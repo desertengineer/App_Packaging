@@ -1,5 +1,16 @@
 {
+  "name": "Tile 2048 Master",
+  "version": "1.0.0",
+  "description": "A native HTML iOS app built with Capacitor",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'No build step required'"
+  },
+  "dependencies": {
+    "@capacitor/core": "7.0.0",
+    "@capacitor/ios": "7.0.0"
+  },
   "devDependencies": {
-    "@capacitor/assets": "^3.0.5"
+    "@capacitor/cli": "7.0.0"
   }
 }
