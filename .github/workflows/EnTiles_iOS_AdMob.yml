@@ -30,7 +30,7 @@ jobs:
       # ==========================================
       # CHANGE THESE VALUES FOR EACH NEW APP
       # ==========================================
-      APP_VERSION: "1.0"
+      APP_VERSION: "1.0.1"
       BUNDLE_ID: "com.bekeiratapps.classic2048tile"
       APP_NAME: "Tile 2048 Master"
       XCODE_SCHEME: "App"
