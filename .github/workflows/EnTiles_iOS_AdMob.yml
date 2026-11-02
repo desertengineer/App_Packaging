@@ -1,4 +1,4 @@
-name: iOS App Store Release Template
+name: EnTiles - iOS App Store (AdMob)
 
 on:
   workflow_dispatch:
