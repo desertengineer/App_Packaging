@@ -3,7 +3,7 @@
 {
   "name": "Magic Block Blitz 2026",
   "version": "1.0.4",
-  "description": "Native iOS app built with Capacitor",
+  "description": "Challenge your brain in Magic Block Blitz 2026! Master colorful grid puzzles, clear combo lines, and conquer daily challenges. Play free offline today!",
   "main": "index.js",
   "scripts": {
     "build": "echo 'No build step required'"
