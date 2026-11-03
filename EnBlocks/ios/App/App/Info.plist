@@ -30,16 +30,16 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 
 	<key>GADApplicationIdentifier</key>
-	<string>REPLACE_AT_BUILD_TIME</string>
+	<string>ca-app-pub-2658659289706339~4005585343</string>
+
+	<key>NSUserTrackingUsageDescription</key>
+	<string>This identifier will be used to deliver personalized ads to you. This app uses location for ad targeting.</string>
 
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-
-	<key>NSUserTrackingUsageDescription</key>
-	<string>This identifier will be used to deliver personalized ads to you. This app uses location for ad targeting.</string>
 
 	<key>UIRequiresFullScreen</key>
 	<true/>
