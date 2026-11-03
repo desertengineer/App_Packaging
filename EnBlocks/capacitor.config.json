@@ -4,7 +4,7 @@
   "webDir": "www",
   "plugins": {
     "AdMob": {
-      "appId": "REPLACE_AT_BUILD_TIME"
+      "appId": "ca-app-pub-2658659289706339~4005585343"
     }
   }
-}
+} 
