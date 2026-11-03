@@ -76,7 +76,7 @@ const RewardAdPluginEvents = Object.freeze({
     Rewarded: 'onRewardedVideoAdReward'
 });
 
-const runtimeAdMobConfig = window.__ADMOB_CONFIG__ || {};
+const runtimeAdMobConfig = (typeof window !== 'undefined' && window.__ADMOB_CONFIG__) || {};
 
 const ADMOB_UNITS = Object.freeze({
     appOpen: runtimeAdMobConfig.appOpen || '',
