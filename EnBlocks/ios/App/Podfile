@@ -20,9 +20,13 @@ target 'App' do
 
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
-        # For Xcode 15.3 (macOS-14)
         config.build_settings['SWIFT_VERSION'] = '5.0'
         config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
+        config.build_settings['SWIFT_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+
+        # Suppress warnings in third-party pods so they don't break the archive
+        config.build_settings['OTHER_SWIFT_FLAGS'] ||= ['$(inherited)']
+        config.build_settings['OTHER_SWIFT_FLAGS'] << '-suppress-warnings'
 
         if config.name.include?('Debug')
           config.build_settings['SWIFT_OPTIMIZATION_LEVEL'] = '-Onone'
