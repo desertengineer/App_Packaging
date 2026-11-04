@@ -33,7 +33,7 @@
 	<string>ca-app-pub-2658659289706339~4005585343</string>
 
 	<key>NSUserTrackingUsageDescription</key>
-	<string>This identifier will be used to deliver personalized ads to you. This app uses location for ad targeting.</string>
+	<string>This identifier will be used to deliver personalized ads to you.</string>
 
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
