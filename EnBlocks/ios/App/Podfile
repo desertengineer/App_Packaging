@@ -22,7 +22,7 @@ target 'App' do
       target.build_configurations.each do |config|
         # For Xcode 15.3 (macOS-14)
         config.build_settings['SWIFT_VERSION'] = '5.0'
-        config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'complete'
+        config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
 
         if config.name.include?('Debug')
           config.build_settings['SWIFT_OPTIMIZATION_LEVEL'] = '-Onone'
