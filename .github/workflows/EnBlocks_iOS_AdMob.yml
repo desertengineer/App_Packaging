@@ -26,7 +26,7 @@ jobs:
     env:
       NODE_VERSION: "24"
       IOS_DEPLOYMENT_TARGET: "15.0"
-      APP_VERSION: "1.1.1"
+      APP_VERSION: "1.1.2"
       BUNDLE_ID: com.bekeiratapps.magicblockblitz2026
       APP_NAME: Magic Block Blitz 2026
       XCODE_SCHEME: App
@@ -43,7 +43,7 @@ jobs:
       KEYCHAIN_PASSWORD: temporary-${{ github.run_id }}
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-      XCODE_MAJOR_REQUIRED: 26
+      XCODE_MAJOR_REQUIRED: 17
 
     steps:
       - name: Checkout repository
@@ -78,7 +78,7 @@ jobs:
 
           sudo xcode-select -switch "$selected"
           echo "DEVELOPER_DIR=$selected" >> "$GITHUB_ENV"
-          
+
           # Verify it's actually Xcode 26+
           xcode_version=$(xcodebuild -version | head -n 1 | awk '{print $3}')
           if [[ ! "$xcode_version" == 26* ]]; then
@@ -351,7 +351,7 @@ jobs:
           if npx cap-assets --version >/dev/null 2>&1; then
             npx cap-assets generate --ios
           fi
-          
+
       - name: Configure Info.plist
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -453,52 +453,6 @@ jobs:
           EOF
 
           echo "PrivacyInfo.xcprivacy created successfully"
-
-      - name: Install xcodeproj Ruby gem
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          gem install xcodeproj --no-document 
-
-      - name: Disable signing for every CocoaPods target
-        working-directory: ${{ env.TARGET_DIR }}/ios/App
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          ruby <<'RUBY'
-          require 'xcodeproj'
-
-          pods_project_path = 'Pods/Pods.xcodeproj'
-          project = Xcodeproj::Project.open(pods_project_path)
-
-          project.targets.each do |target|
-            target.build_configurations.each do |configuration|
-              settings = configuration.build_settings
-
-              settings['CODE_SIGNING_ALLOWED'] = 'NO'
-              settings['CODE_SIGNING_REQUIRED'] = 'NO'
-              settings['CODE_SIGN_IDENTITY'] = '-'
-              settings['DEVELOPMENT_TEAM'] = ''
-              settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
-              settings['PROVISIONING_PROFILE'] = ''
-            end
-          end
-
-          project.save
-          puts 'Disabled signing for all CocoaPods targets.'
-          RUBY
-
-          test -f Pods/Pods.xcodeproj/project.pbxproj
-
-          if grep -n \
-            -E 'CODE_SIGNING_ALLOWED = YES|CODE_SIGNING_REQUIRED = YES|CODE_SIGN_IDENTITY = "iOS Development"' \
-            Pods/Pods.xcodeproj/project.pbxproj; then
-            echo "::error::Signing settings remain enabled in the Pods project."
-            exit 1
-          fi
-
-          echo "CocoaPods signing settings verified."
 
       - name: Validate signing secrets
         shell: bash
@@ -739,6 +693,52 @@ jobs:
 
           test -d Pods/Pods.xcodeproj
           test -f Podfile.lock
+
+      - name: Install xcodeproj Ruby gem
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gem install xcodeproj --no-document
+
+      - name: Disable signing for every CocoaPods target
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          ruby <<'RUBY'
+          require 'xcodeproj'
+
+          pods_project_path = 'Pods/Pods.xcodeproj'
+          project = Xcodeproj::Project.open(pods_project_path)
+
+          project.targets.each do |target|
+            target.build_configurations.each do |configuration|
+              settings = configuration.build_settings
+
+              settings['CODE_SIGNING_ALLOWED'] = 'NO'
+              settings['CODE_SIGNING_REQUIRED'] = 'NO'
+              settings['CODE_SIGN_IDENTITY'] = '-'
+              settings['DEVELOPMENT_TEAM'] = ''
+              settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
+              settings['PROVISIONING_PROFILE'] = ''
+            end
+          end
+
+          project.save
+          puts 'Disabled signing for all CocoaPods targets.'
+          RUBY
+
+          test -f Pods/Pods.xcodeproj/project.pbxproj
+
+          if grep -n \
+            -E 'CODE_SIGNING_ALLOWED = YES|CODE_SIGNING_REQUIRED = YES|CODE_SIGN_IDENTITY = "iOS Development"' \
+            Pods/Pods.xcodeproj/project.pbxproj; then
+            echo "::error::Signing settings remain enabled in the Pods project."
+            exit 1
+          fi
+
+          echo "CocoaPods signing settings verified."
 
       - name: Archive iOS app
         working-directory: ${{ env.TARGET_DIR }}/ios/App
