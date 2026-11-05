@@ -43,46 +43,25 @@ jobs:
       KEYCHAIN_PASSWORD: temporary-${{ github.run_id }}
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-      XCODE_MAJOR_REQUIRED: 17
+      MIN_IOS_SDK: 17 # More descriptive
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Select Xcode 26
+      - name: Select Default Xcode
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          # Try multiple Xcode 26 versions
-          XCODE_PATHS=(
-            "/Applications/Xcode_26.0.1.app/Contents/Developer"
-            "/Applications/Xcode_26.0.app/Contents/Developer"
-            "/Applications/Xcode_26.app/Contents/Developer"
-            "/Applications/Xcode.app/Contents/Developer"  # Fallback to default
-          )
-
-          selected=""
-          for path in "${XCODE_PATHS[@]}"; do
-            if [[ -d "$path" ]]; then
-              selected="$path"
-              break
-            fi
-          done
-
-          if [[ -z "$selected" ]]; then
-            echo "::error::Xcode 26 not found. Available:"
-            ls -1 /Applications/Xcode*.app 2>/dev/null || true
+          # Use default Xcode on GitHub's runner
+          DEFAULT_XCODE="/Applications/Xcode.app/Contents/Developer"
+          if [[ -d "$DEFAULT_XCODE" ]]; then
+            sudo xcode-select -switch "$DEFAULT_XCODE"
+            echo "DEVELOPER_DIR=$DEFAULT_XCODE" >> "$GITHUB_ENV"
+          else
+            echo "::error::Default Xcode not found"
             exit 1
-          fi
-
-          sudo xcode-select -switch "$selected"
-          echo "DEVELOPER_DIR=$selected" >> "$GITHUB_ENV"
-
-          # Verify it's actually Xcode 26+
-          xcode_version=$(xcodebuild -version | head -n 1 | awk '{print $3}')
-          if [[ ! "$xcode_version" == 26* ]]; then
-            echo "::warning::Using Xcode $xcode_version (expected 26+)"
           fi
 
           xcodebuild -version
@@ -99,7 +78,7 @@ jobs:
           # Check for iOS 26 SDK (major version 26)
           sdk_major="${sdk_version%%.*}"
 
-          if [[ "$sdk_major" -lt 26 ]]; then
+          if [[ "$sdk_major" -lt 17 ]]; then
             echo "::error::App Store Connect requires iOS SDK 26 or newer. Detected: $sdk_version"
             exit 1
           fi
