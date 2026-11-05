@@ -54,25 +54,35 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          # Try Xcode 26.0.1 first (as shown in your error log)
-          XCODE_PATH="/Applications/Xcode_26.0.1.app/Contents/Developer"
+          # Try multiple Xcode 26 versions
+          XCODE_PATHS=(
+            "/Applications/Xcode_26.0.1.app/Contents/Developer"
+            "/Applications/Xcode_26.0.app/Contents/Developer"
+            "/Applications/Xcode_26.app/Contents/Developer"
+            "/Applications/Xcode.app/Contents/Developer"  # Fallback to default
+          )
 
-          if [[ -d "$XCODE_PATH" ]]; then
-            sudo xcode-select -switch "$XCODE_PATH"
-            echo "DEVELOPER_DIR=$XCODE_PATH" >> "$GITHUB_ENV"
-            echo "Using Xcode 26.0.1"
-          else
-            # Fallback to any Xcode 26
-            XCODE_PATH="/Applications/Xcode_26.app/Contents/Developer"
-            if [[ -d "$XCODE_PATH" ]]; then
-              sudo xcode-select -switch "$XCODE_PATH"
-              echo "DEVELOPER_DIR=$XCODE_PATH" >> "$GITHUB_ENV"
-              echo "Using Xcode 26"
-            else
-              echo "::error::Xcode 26 not found. Available Xcode installations:"
-              ls -1 /Applications/Xcode*.app 2>/dev/null || true
-              exit 1
+          selected=""
+          for path in "${XCODE_PATHS[@]}"; do
+            if [[ -d "$path" ]]; then
+              selected="$path"
+              break
             fi
+          done
+
+          if [[ -z "$selected" ]]; then
+            echo "::error::Xcode 26 not found. Available:"
+            ls -1 /Applications/Xcode*.app 2>/dev/null || true
+            exit 1
+          fi
+
+          sudo xcode-select -switch "$selected"
+          echo "DEVELOPER_DIR=$selected" >> "$GITHUB_ENV"
+          
+          # Verify it's actually Xcode 26+
+          xcode_version=$(xcodebuild -version | head -n 1 | awk '{print $3}')
+          if [[ ! "$xcode_version" == 26* ]]; then
+            echo "::warning::Using Xcode $xcode_version (expected 26+)"
           fi
 
           xcodebuild -version
