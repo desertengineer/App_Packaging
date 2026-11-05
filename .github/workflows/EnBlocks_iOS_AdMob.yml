@@ -485,37 +485,12 @@ jobs:
 
           echo "$CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
 
-          security create-keychain \
-            -p "$KEYCHAIN_PASSWORD" \
-            "$keychain_path"
-
-          security set-keychain-settings \
-            -lut 21600 \
-            "$keychain_path"
-
-          security unlock-keychain \
-            -p "$KEYCHAIN_PASSWORD" \
-            "$keychain_path"
-
-          security import \
-            "$certificate_path" \
-            -P "$CERTIFICATE_PASSWORD" \
-            -A \
-            -t cert \
-            -f pkcs12 \
-            -k "$keychain_path"
-
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s \
-            -k "$KEYCHAIN_PASSWORD" \
-            "$keychain_path"
-
-          security list-keychains \
-            -d user \
-            -s "$keychain_path" \
-            login.keychain-db
-
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -P "$********_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" login.keychain-db
           security default-keychain -s "$keychain_path"
 
           echo "KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
@@ -536,29 +511,10 @@ jobs:
           echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile_path"
           security cms -D -i "$profile_path" > "$profile_plist"
 
-          profile_uuid="$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :UUID" \
-              "$profile_plist"
-          )"
-
-          profile_name="$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :Name" \
-              "$profile_plist"
-          )"
-
-          profile_app_id="$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :Entitlements:application-identifier" \
-              "$profile_plist"
-          )"
-
-          provisioned_devices="$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :ProvisionedDevices" \
-              "$profile_plist" 2>/dev/null || true
-          )"
+          profile_uuid=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$profile_plist")
+          profile_name=$(/usr/libexec/PlistBuddy -c "Print :Name" "$profile_plist")
+          profile_app_id=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" "$profile_plist")
+          provisioned_devices=$(/usr/libexec/PlistBuddy -c "Print :ProvisionedDevices" "$profile_plist" 2>/dev/null || true)
 
           echo "Provisioning profile: $profile_name"
           echo "Profile application identifier: $profile_app_id"
@@ -573,10 +529,7 @@ jobs:
             exit 1
           fi
 
-          cp \
-            "$profile_path" \
-            "$profile_dir/$profile_uuid.mobileprovision"
-
+          cp "$profile_path" "$profile_dir/$profile_uuid.mobileprovision"
           echo "PROFILE_UUID=$profile_uuid" >> "$GITHUB_ENV"
 
       - name: Configure native App target signing
@@ -588,20 +541,16 @@ jobs:
           APP_BUNDLE_ID: ${{ env.BUNDLE_ID }}
         run: |
           set -Eeuo pipefail
-
           gem install xcodeproj --no-document
 
           ruby <<'RUBY'
           require 'xcodeproj'
-
           project = Xcodeproj::Project.open('App.xcodeproj')
           target = project.targets.find { |item| item.name == 'App' }
-
           abort 'Native App target was not found.' unless target
 
           target.build_configurations.each do |configuration|
             settings = configuration.build_settings
-
             settings['PRODUCT_BUNDLE_IDENTIFIER'] = ENV.fetch('APP_BUNDLE_ID')
             settings['DEVELOPMENT_TEAM'] = ENV.fetch('APP_TEAM_ID')
             settings['CODE_SIGN_STYLE'] = 'Manual'
@@ -610,7 +559,6 @@ jobs:
             settings['CODE_SIGNING_ALLOWED'] = 'YES'
             settings['CODE_SIGNING_REQUIRED'] = 'YES'
           end
-
           project.save
           puts 'Configured manual signing on the native App target.'
           RUBY
@@ -622,18 +570,10 @@ jobs:
           set -Eeuo pipefail
 
           settings_file="$RUNNER_TEMP/app-signing-settings.txt"
-
-          xcodebuild \
-            -workspace App.xcworkspace \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            -showBuildSettings \
-            > "$settings_file"
+          xcodebuild -workspace App.xcworkspace -scheme "$XCODE_SCHEME" -configuration Release -destination "generic/platform=iOS" -showBuildSettings > "$settings_file"
 
           require_setting() {
             local expected="$1"
-
             if ! grep -F -- "$expected" "$settings_file" > /dev/null; then
               echo "::error::Missing expected setting: $expected"
               cat "$settings_file"
@@ -657,23 +597,15 @@ jobs:
           BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -Eeuo pipefail
-
           plist="App/Info.plist"
 
-          /usr/libexec/PlistBuddy \
-            -c "Set :CFBundleShortVersionString $APP_VERSION" \
-            "$plist" 2>/dev/null || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :CFBundleShortVersionString string $APP_VERSION" \
-            "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$plist" 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $APP_VERSION" "$plist"
 
-          /usr/libexec/PlistBuddy \
-            -c "Set :CFBundleVersion $BUILD_NUMBER" \
-            "$plist" 2>/dev/null || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :CFBundleVersion string $BUILD_NUMBER" \
-            "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$plist" 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUILD_NUMBER" "$plist"
 
+      # ========== CocoaPods - CORRECT ORDER ==========
       - name: Update CocoaPods repository
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         run: pod repo update
@@ -685,12 +617,9 @@ jobs:
           COCOAPODS_DISABLE_STATS: "true"
         run: |
           set -Eeuo pipefail
-
           rm -rf Pods/ || true
           rm -f Podfile.lock || true
-
           pod install
-
           test -d Pods/Pods.xcodeproj
           test -f Podfile.lock
 
@@ -708,14 +637,12 @@ jobs:
 
           ruby <<'RUBY'
           require 'xcodeproj'
-
           pods_project_path = 'Pods/Pods.xcodeproj'
           project = Xcodeproj::Project.open(pods_project_path)
 
           project.targets.each do |target|
             target.build_configurations.each do |configuration|
               settings = configuration.build_settings
-
               settings['CODE_SIGNING_ALLOWED'] = 'NO'
               settings['CODE_SIGNING_REQUIRED'] = 'NO'
               settings['CODE_SIGN_IDENTITY'] = '-'
@@ -731,15 +658,14 @@ jobs:
 
           test -f Pods/Pods.xcodeproj/project.pbxproj
 
-          if grep -n \
-            -E 'CODE_SIGNING_ALLOWED = YES|CODE_SIGNING_REQUIRED = YES|CODE_SIGN_IDENTITY = "iOS Development"' \
-            Pods/Pods.xcodeproj/project.pbxproj; then
+          if grep -n -E 'CODE_SIGNING_ALLOWED = YES|CODE_SIGNING_REQUIRED = YES|CODE_SIGN_IDENTITY = "iOS Development"' Pods/Pods.xcodeproj/project.pbxproj; then
             echo "::error::Signing settings remain enabled in the Pods project."
             exit 1
           fi
 
           echo "CocoaPods signing settings verified."
 
+      # ========== Build & Archive ==========
       - name: Archive iOS app
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
@@ -752,15 +678,14 @@ jobs:
           set +e
 
           xcodebuild archive \
-          -workspace App.xcworkspace \
-          -scheme "$XCODE_SCHEME" \
-          -configuration Release \
-          -destination "generic/platform=iOS" \
-          -archivePath "$archive_path" \
-          SDKROOT=iphoneos26.0 \  # <-- CHANGE THIS LINE
-          IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
-          COMPILER_INDEX_STORE_ENABLE=NO \
-          2>&1 | tee "$log_path"
+            -workspace App.xcworkspace \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$archive_path" \
+            IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            2>&1 | tee "$log_path"
 
           build_status=${PIPESTATUS[0]}
           set -e
@@ -819,13 +744,7 @@ jobs:
             -exportOptionsPlist exportOptions.plist \
             -exportPath "$output_path"
 
-          ipa_path="$(
-            find "$output_path" \
-              -maxdepth 1 \
-              -name "*.ipa" \
-              -print \
-              -quit
-          )"
+          ipa_path="$(find "$output_path" -maxdepth 1 -name "*.ipa" -print -quit)"
 
           if [[ -z "$ipa_path" || ! -f "$ipa_path" ]]; then
             echo "::error::No IPA was produced."
@@ -841,31 +760,15 @@ jobs:
           set -Eeuo pipefail
 
           app_path="$RUNNER_TEMP/EnBlocks.xcarchive/Products/Applications/App.app"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
 
-          codesign \
-            --verify \
-            --deep \
-            --strict \
-            --verbose=2 \
-            "$app_path"
-
-          actual_bundle_id="$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :CFBundleIdentifier" \
-              "$app_path/Info.plist"
-          )"
-
+          actual_bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app_path/Info.plist")
           if [[ "$actual_bundle_id" != "$BUNDLE_ID" ]]; then
             echo "::error::Bundle ID mismatch."
             exit 1
           fi
 
-          archive_admob_id="$(
-            /usr/libexec/PlistBuddy \
-              -c "Print :GADApplicationIdentifier" \
-              "$app_path/Info.plist"
-          )"
-
+          archive_admob_id=$(/usr/libexec/PlistBuddy -c "Print :GADApplicationIdentifier" "$app_path/Info.plist")
           if [[ "$archive_admob_id" != "$ADMOB_APP_ID" ]]; then
             echo "::error::AdMob application ID mismatch."
             exit 1
@@ -923,11 +826,9 @@ jobs:
         shell: bash
         run: |
           set +e
-
           if [[ -n "${KEYCHAIN_PATH:-}" ]]; then
             security delete-keychain "$KEYCHAIN_PATH"
           fi
-
           rm -f "$RUNNER_TEMP/certificate.p12"
           rm -f "$RUNNER_TEMP/profile.mobileprovision"
           rm -f "$RUNNER_TEMP/profile.plist"
