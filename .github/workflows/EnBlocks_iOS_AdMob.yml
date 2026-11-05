@@ -85,18 +85,16 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          # Get iOS SDK version specifically (not macOS SDK)
           sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
           echo "Detected iOS SDK version: $sdk_version"
 
           sdk_major="${sdk_version%%.*}"
-
-          if [[ "$sdk_major" -lt 17 ]]; then
-            echo "::error::App Store Connect requires iOS SDK 17 or newer. Detected: $sdk_version"
+          if [[ "$sdk_major" -lt "$MIN_IOS_SDK" ]]; then
+            echo "::error::App Store Connect requires iOS SDK $MIN_IOS_SDK or newer. Detected: $sdk_version"
             exit 1
           fi
 
-          echo "✅ iOS SDK version $sdk_version meets App Store Connect requirements"
+          echo "iOS SDK version $sdk_version meets the minimum requirement"
 
       - name: Locate EnBlocks project
         shell: bash
