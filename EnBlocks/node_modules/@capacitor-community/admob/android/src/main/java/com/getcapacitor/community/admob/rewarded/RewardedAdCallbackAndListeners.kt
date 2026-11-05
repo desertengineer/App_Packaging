@@ -4,6 +4,7 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.PluginCall
 import com.getcapacitor.community.admob.helpers.FullscreenPluginCallback
 import com.getcapacitor.community.admob.models.AdMobPluginError
+import com.getcapacitor.community.admob.models.AdMobRevenueData
 import com.getcapacitor.community.admob.models.AdOptions
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.OnUserEarnedRewardListener
@@ -28,9 +29,18 @@ object RewardedAdCallbackAndListeners {
     fun getRewardedAdLoadCallback(call: PluginCall, notifyListenersFunction: BiConsumer<String, JSObject>, adOptions: AdOptions): RewardedAdLoadCallback {
         return object : RewardedAdLoadCallback() {
             override fun onAdLoaded(ad: RewardedAd) {
-                AdRewardExecutor.mRewardedAd = ad
-                AdRewardExecutor.mRewardedAd.fullScreenContentCallback = FullscreenPluginCallback(
+                val immersiveMode = call.getBoolean("immersiveMode")
+                ad.setImmersiveMode(immersiveMode ?: false)
+                ad.fullScreenContentCallback = FullscreenPluginCallback(
                         RewardAdPluginEvents, notifyListenersFunction)
+
+                ad.setOnPaidEventListener { adValue ->
+                    val responseInfo = ad.responseInfo
+                    val networkName = responseInfo?.mediationAdapterClassName ?: ""
+                    val impressionId = responseInfo?.responseId ?: ""
+                    val revenueData = AdMobRevenueData(adValue, ad.adUnitId, networkName, impressionId)
+                    notifyListenersFunction.accept(RewardAdPluginEvents.AdImpression, revenueData)
+                }
 
                 if(adOptions.ssvInfo.hasInfo){
                     val ssvOptions = ServerSideVerificationOptions.Builder()
@@ -41,8 +51,11 @@ object RewardedAdCallbackAndListeners {
                     adOptions.ssvInfo.userId?.let {
                         ssvOptions.setUserId(it)
                     }
-                    AdRewardExecutor.mRewardedAd.setServerSideVerificationOptions(ssvOptions.build())
+                    ad.setServerSideVerificationOptions(ssvOptions.build())
                 }
+
+                AdRewardExecutor.preparedAds[ad.adUnitId] = ad
+                AdRewardExecutor.lastPreparedAdId = ad.adUnitId
 
                 val adInfo = JSObject()
                 adInfo.put("adUnitId", ad.adUnitId)
@@ -55,7 +68,7 @@ object RewardedAdCallbackAndListeners {
                 val adMobError = AdMobPluginError(adError)
 
                 notifyListenersFunction.accept(RewardAdPluginEvents.FailedToLoad, adMobError)
-                call.reject(adError.message)
+                call.reject(adError.message, adError.code.toString())
             }
         }
     }
