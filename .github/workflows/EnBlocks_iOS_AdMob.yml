@@ -79,7 +79,7 @@ jobs:
           sdk_major="${sdk_version%%.*}"
 
           if [[ "$sdk_major" -lt 17 ]]; then
-            echo "::error::App Store Connect requires iOS SDK 26 or newer. Detected: $sdk_version"
+            echo "::error::App Store Connect requires iOS SDK 17 or newer. Detected: $sdk_version"
             exit 1
           fi
 
@@ -662,6 +662,7 @@ jobs:
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath "$archive_path" \
+            SDKROOT=iphoneos \ 
             IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
             COMPILER_INDEX_STORE_ENABLE=NO \
             2>&1 | tee "$log_path"
