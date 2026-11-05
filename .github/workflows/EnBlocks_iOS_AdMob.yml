@@ -333,14 +333,23 @@ jobs:
           set -Eeuo pipefail
           npx cap sync ios
 
-      - name: Generate Capacitor Assets
+      - name: Generate iOS app icons
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
           set -Eeuo pipefail
-          if npx cap-assets --version >/dev/null 2>&1; then
-            npx cap-assets generate --ios
-          fi
+
+          test -s assets/logo.png || {
+            echo "::error::Missing icon source: assets/logo.png"
+            exit 1
+          }
+
+          npx capacitor-assets generate --ios
+
+          test -s ios/App/App/Assets.xcassets/AppIcon.appiconset/Contents.json || {
+            echo "::error::iOS AppIcon asset catalog was not generated."
+            exit 1
+          }
 
       - name: Configure Info.plist
         working-directory: ${{ env.TARGET_DIR }}
