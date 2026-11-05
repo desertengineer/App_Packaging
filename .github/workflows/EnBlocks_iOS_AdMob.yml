@@ -339,8 +339,8 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          test -s assets/logo.png || {
-            echo "::error::Missing icon source: assets/logo.png"
+          test -s assets/icon.png || {
+            echo "::error::Missing icon source: assets/icon.png"
             exit 1
           }
 
