@@ -54,18 +54,31 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          # Use default Xcode on GitHub's runner
-          DEFAULT_XCODE="/Applications/Xcode.app/Contents/Developer"
-          if [[ -d "$DEFAULT_XCODE" ]]; then
-            sudo xcode-select -switch "$DEFAULT_XCODE"
-            echo "DEVELOPER_DIR=$DEFAULT_XCODE" >> "$GITHUB_ENV"
-          else
-            echo "::error::Default Xcode not found"
+          selected=""
+          for app in /Applications/Xcode_*.app /Applications/Xcode.app; do
+            [[ -d "$app/Contents/Developer" ]] || continue
+
+            version="$(DEVELOPER_DIR="$app/Contents/Developer" xcodebuild -version |
+              awk '/^Xcode / { print $2; exit }')"
+            major="${version%%.*}"
+
+            if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 26 )); then
+              selected="$app/Contents/Developer"
+              break
+            fi
+          done
+
+          if [[ -z "$selected" ]]; then
+            echo "::error::Xcode 26 or later is not installed on this runner."
+            ls -d /Applications/Xcode*.app 2>/dev/null || true
             exit 1
           fi
 
+          sudo xcode-select --switch "$selected"
+          echo "DEVELOPER_DIR=$selected" >> "$GITHUB_ENV"
+
           xcodebuild -version
-          xcrun --show-sdk-version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Verify Xcode SDK version
         shell: bash
