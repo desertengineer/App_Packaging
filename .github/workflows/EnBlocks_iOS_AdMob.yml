@@ -436,21 +436,20 @@ jobs:
       - name: Validate signing secrets
         shell: bash
         env:
-          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.BASE64_PROVISIONING_PROFILE }}
           ASC_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
         run: |
           set -Eeuo pipefail
 
-          : "${CERTIFICATE_BASE64:?Missing APPLE_CERTIFICATE_P12}"
-          : "${CERTIFICATE_PASSWORD:?Missing APPLE_CERTIFICATE_PASS}"
+          # These are already in the workflow's top-level env
+          : "${CERTIFICATE_BASE64:?Missing CERTIFICATE_BASE64}"
+          : "${CERTIFICATE_PASSWORD:?Missing CERTIFICATE_PASSWORD}"
           : "${PROVISIONING_PROFILE_BASE64:?Missing BASE64_PROVISIONING_PROFILE}"
           : "${APP_STORE_CONNECT_KEY_ID:?Missing APP_STORE_CONNECT_KEY_ID}"
           : "${APP_STORE_CONNECT_ISSUER_ID:?Missing APP_STORE_CONNECT_ISSUER_ID}"
           : "${ASC_KEY_CONTENT:?Missing APP_STORE_CONNECT_KEY_CONTENT}"
 
-      - name: Import Apple distribution certificate
+      - name: Import Apple distribution certificates
         shell: bash
         env:
           CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
@@ -467,7 +466,7 @@ jobs:
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
           security set-keychain-settings -lut 21600 "$keychain_path"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
-          security import "$certificate_path" -P "$********_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security import "$certificate_path" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
           security list-keychains -d user -s "$keychain_path" login.keychain-db
           security default-keychain -s "$keychain_path"
