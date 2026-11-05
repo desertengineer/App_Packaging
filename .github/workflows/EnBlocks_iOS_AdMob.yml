@@ -72,10 +72,10 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          sdk_version="$(xcrun --show-sdk-version)"
-          echo "Detected SDK version: $sdk_version"
+          # Get iOS SDK version specifically (not macOS SDK)
+          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "Detected iOS SDK version: $sdk_version"
 
-          # Check for iOS 26 SDK (major version 26)
           sdk_major="${sdk_version%%.*}"
 
           if [[ "$sdk_major" -lt 17 ]]; then
@@ -83,7 +83,7 @@ jobs:
             exit 1
           fi
 
-          echo "✅ SDK version $sdk_version is compatible with App Store Connect"
+          echo "✅ iOS SDK version $sdk_version meets App Store Connect requirements"
 
       - name: Locate EnBlocks project
         shell: bash
