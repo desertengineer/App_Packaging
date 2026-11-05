@@ -742,15 +742,15 @@ jobs:
           set +e
 
           xcodebuild archive \
-            -workspace App.xcworkspace \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            -archivePath "$archive_path" \
-            SDKROOT=iphoneos \
-            IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            2>&1 | tee "$log_path"
+          -workspace App.xcworkspace \
+          -scheme "$XCODE_SCHEME" \
+          -configuration Release \
+          -destination "generic/platform=iOS" \
+          -archivePath "$archive_path" \
+          SDKROOT=iphoneos26.0 \  # <-- CHANGE THIS LINE
+          IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+          COMPILER_INDEX_STORE_ENABLE=NO \
+          2>&1 | tee "$log_path"
 
           build_status=${PIPESTATUS[0]}
           set -e
