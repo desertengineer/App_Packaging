@@ -10,10 +10,6 @@ def capacitor_pods
   pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorCommunityAdmob', :path => '../../node_modules/@capacitor-community/admob'
-  
-  # Add explicit version for Google SDKs
-  pod 'Google-Mobile-Ads-SDK', '~> 11.0.0'  # or latest compatible with Xcode 26
-  pod 'GoogleUserMessagingPlatform', '~> 2.0.0'
 end
 
 target 'App' do

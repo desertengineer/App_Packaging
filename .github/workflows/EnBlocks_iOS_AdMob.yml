@@ -43,50 +43,40 @@ jobs:
       KEYCHAIN_PASSWORD: temporary-${{ github.run_id }}
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-      XCODE_MAJOR_REQUIRED: "26"
+      XCODE_MAJOR_REQUIRED: 26
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Select Xcode 26 for App Store compliance
+      - name: Select Xcode 26
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          candidates=(
-            "/Applications/Xcode_26.0.app/Contents/Developer"
-            "/Applications/Xcode_26.app/Contents/Developer"
-            "/Applications/Xcode.app/Contents/Developer"
-          )
+          # Try Xcode 26.0.1 first (as shown in your error log)
+          XCODE_PATH="/Applications/Xcode_26.0.1.app/Contents/Developer"
 
-          selected=""
-          for candidate in "${candidates[@]}"; do
-            if [[ -d "$candidate" ]]; then
-              # Verify that this Xcode instance supports iOS 26+ SDK
-              sdk_path="$candidate/Platforms/iPhoneOS.platform/Developer/SDKs"
-              if ls "$sdk_path" | grep -q "iPhoneOS26"; then
-                selected="$candidate"
-                break
-              elif [[ -z "$selected" ]]; then
-                # Fallback to standard path if exact version string varies
-                selected="$candidate"
-              fi
+          if [[ -d "$XCODE_PATH" ]]; then
+            sudo xcode-select -switch "$XCODE_PATH"
+            echo "DEVELOPER_DIR=$XCODE_PATH" >> "$GITHUB_ENV"
+            echo "Using Xcode 26.0.1"
+          else
+            # Fallback to any Xcode 26
+            XCODE_PATH="/Applications/Xcode_26.app/Contents/Developer"
+            if [[ -d "$XCODE_PATH" ]]; then
+              sudo xcode-select -switch "$XCODE_PATH"
+              echo "DEVELOPER_DIR=$XCODE_PATH" >> "$GITHUB_ENV"
+              echo "Using Xcode 26"
+            else
+              echo "::error::Xcode 26 not found. Available Xcode installations:"
+              ls -1 /Applications/Xcode*.app 2>/dev/null || true
+              exit 1
             fi
-          done
-
-          if [[ -z "$selected" ]]; then
-            echo "::error::Xcode 26 or later was not found on the runner."
-            exit 1
           fi
 
-          sudo xcode-select -switch "$selected"
-          echo "DEVELOPER_DIR=$selected" >> "$GITHUB_ENV"
-
-          echo "=== Xcode & SDK Information ==="
           xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-path
-          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --show-sdk-version
 
       - name: Verify Xcode SDK version
         shell: bash
@@ -94,14 +84,17 @@ jobs:
           set -Eeuo pipefail
 
           sdk_version="$(xcrun --show-sdk-version)"
-          major_version="${sdk_version%%.*}"
-
           echo "Detected SDK version: $sdk_version"
 
-          if (( major_version < XCODE_MAJOR_REQUIRED )); then
+          # Check for iOS 26 SDK (major version 26)
+          sdk_major="${sdk_version%%.*}"
+
+          if [[ "$sdk_major" -lt 26 ]]; then
             echo "::error::App Store Connect requires iOS SDK 26 or newer. Detected: $sdk_version"
             exit 1
           fi
+
+          echo "✅ SDK version $sdk_version is compatible with App Store Connect"
 
       - name: Locate EnBlocks project
         shell: bash
@@ -455,19 +448,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          gem install xcodeproj --no-document
-
-      - name: Install CocoaPods dependencies
-        working-directory: ${{ env.TARGET_DIR }}/ios/App
-        shell: bash
-        env:
-          COCOAPODS_DISABLE_STATS: "true"
-        run: |
-          set -Eeuo pipefail
-          rm -rf Pods/ || true
-          rm -f Podfile.lock || true
-          pod install
-          test -d Pods/Pods.xcodeproj
+          gem install xcodeproj --no-document 
 
       - name: Disable signing for every CocoaPods target
         working-directory: ${{ env.TARGET_DIR }}/ios/App
