@@ -49,6 +49,33 @@ let dragOffsetX = 0, dragOffsetY = 0, hoverGridX = -1, hoverGridY = -1, boardCel
 let musicVol = 0.5; let sfxVol = 0.8;
 
 // ============================================================
+// Update AdMob integration
+// ============================================================
+async function requestATTBeforeAds() {
+    if (!isNativeCapacitorApp()) {
+        return 'not-native';
+    }
+
+    const att = window.Capacitor?.Plugins?.AppTrackingTransparency;
+
+    if (!att?.getStatus || !att?.requestPermission) {
+        throw new Error(
+            'AppTrackingTransparency plugin is missing or not registered.'
+        );
+    }
+
+    let result = await att.getStatus();
+    let status = result?.status ?? result;
+
+    if (status === 'notDetermined') {
+        result = await att.requestPermission();
+        status = result?.status ?? result;
+    }
+
+    console.info('ATT authorization status:', status);
+    return status;
+}
+// ============================================================
 // Capacitor AdMob integration
 // ============================================================
 
@@ -159,6 +186,13 @@ async function initEnBlocksMonetization() {
             console.warn('AdMob plugin is unavailable.');
             return false;
         }
+
+        const trackingStatus = await requestATTBeforeAds();
+
+        // Continue to initialize AdMob only after the ATT status is known.
+        // If the user denied or is restricted, do not track them.
+        console.info('Continuing with ATT status:', trackingStatus);
+
 
         await AdMob.initialize({
             requestTrackingAuthorization: false,
