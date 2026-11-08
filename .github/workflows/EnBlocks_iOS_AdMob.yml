@@ -700,6 +700,15 @@ jobs:
 
           test -d "$archive_path/Products/Applications/App.app"
 
+      - name: Upload Xcode archive log
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: Xcode-archive-log-${{ github.run_number }}
+          path: ${{ runner.temp }}/xcodebuild.log
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Create export options
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
