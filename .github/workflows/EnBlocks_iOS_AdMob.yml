@@ -43,7 +43,7 @@ jobs:
       KEYCHAIN_PASSWORD: temporary-${{ github.run_id }}
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-      MIN_IOS_SDK: 17 # More descriptive
+      MIN_IOS_SDK: 26 # More descriptive
 
     steps:
       - name: Checkout repository
@@ -620,6 +620,29 @@ jobs:
           pod install
           test -d Pods/Pods.xcodeproj
           test -f Podfile.lock
+
+      - name: Verify resolved UMP version
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          ump_version="$(
+            sed -nE 's/^  - GoogleUserMessagingPlatform \(([^)]+)\).*/\1/p' Podfile.lock |
+            head -n 1
+          )"
+
+          if [[ -z "$ump_version" ]]; then
+            echo "::error::GoogleUserMessagingPlatform was not found in Podfile.lock."
+            exit 1
+          fi
+
+          echo "Resolved GoogleUserMessagingPlatform version: $ump_version"
+
+          if [[ "$ump_version" == 3.* ]]; then
+            echo "::error::AdMob 6.0.0 is compiling against UMP 3.x; expected UMP 2.x."
+            exit 1
+          fi
 
       - name: Install xcodeproj Ruby gem
         shell: bash
