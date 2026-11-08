@@ -690,6 +690,9 @@ jobs:
           set -e
 
           if [[ "$build_status" -ne 0 ]]; then
+            echo "===== XCODE / SWIFT ERRORS ====="
+            grep -n -C 5 -E '(^|[[:space:]])error:|fatal error:' "$log_path" || true
+
             echo "===== LAST 300 BUILD LOG LINES ====="
             tail -n 300 "$log_path"
             exit "$build_status"
