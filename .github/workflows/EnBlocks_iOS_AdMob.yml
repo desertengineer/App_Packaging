@@ -58,8 +58,9 @@ jobs:
           for app in /Applications/Xcode_*.app /Applications/Xcode.app; do
             [[ -d "$app/Contents/Developer" ]] || continue
 
-            version="$(DEVELOPER_DIR="$app/Contents/Developer" xcodebuild -version |
-              awk '/^Xcode / { print $2; exit }')"
+            version_output="$(DEVELOPER_DIR="$app/Contents/Developer" xcodebuild -version)"
+            version="${version_output#Xcode }"
+            version="${version%%$'\n'*}"
             major="${version%%.*}"
 
             if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 26 )); then
