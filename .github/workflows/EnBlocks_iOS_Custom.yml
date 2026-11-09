@@ -379,6 +379,7 @@ jobs:
 
           ruby <<'RUBY'
           require 'xcodeproj'
+          require 'pathname'
 
           project_path = 'App.xcodeproj'
           project = Xcodeproj::Project.open(project_path)
@@ -387,9 +388,10 @@ jobs:
           app_target = project.targets.find { |t| t.name == 'App' }
           abort 'App target not found' unless app_target
 
-          # Framework paths relative to project directory
-          gma_framework_path = '../GoogleMobileAds.xcframework'
-          ump_framework_path = '../UserMessagingPlatform.xcframework'
+          # Framework paths - use absolute paths as required by xcodeproj
+          # The frameworks are in the same directory as the Xcode project
+          gma_framework_path = File.expand_path('GoogleMobileAds.xcframework')
+          ump_framework_path = File.expand_path('UserMessagingPlatform.xcframework')
 
           # Add frameworks to the project if they don't exist
           gma_file_ref = project.reference_for_path(gma_framework_path)
