@@ -164,7 +164,7 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ env.TARGET_DIR }}/package-lock.json
 
-            - name: Install JavaScript dependencies
+      - name: Install JavaScript dependencies
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
