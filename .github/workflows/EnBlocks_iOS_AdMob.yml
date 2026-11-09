@@ -609,6 +609,20 @@ jobs:
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         run: pod repo update
 
+      - name: Verify Podfile UMP pin
+        working-directory: ${{ env.TARGET_DIR }}/ios/App
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          echo "Podfile used by this job:"
+          grep -n 'GoogleUserMessagingPlatform' Podfile
+
+          grep -Fq "pod 'GoogleUserMessagingPlatform', '= 2.2.0'" Podfile || {
+            echo "::error::This checkout does not contain the expected UMP 2.2.0 pin."
+            exit 1
+          }
+
       - name: Install CocoaPods dependencies
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
