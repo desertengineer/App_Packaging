@@ -27,9 +27,9 @@ jobs:
       NODE_VERSION: "24"
       IOS_DEPLOYMENT_TARGET: "15.0"
       APP_VERSION: "1.1.2"
-      BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER || env.BUNDLE_IDENTIFIER }}
-      APP_NAME: ${{ vars.APP_NAME || env.APP_NAME }}
-      XCODE_SCHEME: ${{ vars.XCODE_SCHEME || env.XCODE_SCHEME }}
+      BUNDLE_ID: ${{ vars.BUNDLE_IDENTIFIER }}
+      APP_NAME: ${{ vars.APP_NAME }}
+      XCODE_SCHEME: ${{ vars.XCODE_SCHEME }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
       ADMOB_APP_OPEN_AD_ID: ${{ secrets.ADMOB_APP_OPEN_AD_ID }}
