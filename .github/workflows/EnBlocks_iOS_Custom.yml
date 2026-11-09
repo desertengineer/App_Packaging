@@ -405,13 +405,12 @@ jobs:
           end
 
           # Add frameworks to the App target's framework build phase
-          app_target.frameworks_build_phases.each do |phase|
-            unless phase.files.any? { |f| f.file_ref.display_name == 'GoogleMobileAds.xcframework' }
-              phase.add_file_reference(gma_file_ref, true)
-            end
-            unless phase.files.any? { |f| f.file_ref.display_name == 'UserMessagingPlatform.xcframework' }
-              phase.add_file_reference(ump_file_ref, true)
-            end
+          framework_phase = app_target.frameworks_build_phases
+          unless framework_phase.files.any? { |f| f.file_ref.display_name == 'GoogleMobileAds.xcframework' }
+            framework_phase.add_file_reference(gma_file_ref, true)
+          end
+          unless framework_phase.files.any? { |f| f.file_ref.display_name == 'UserMessagingPlatform.xcframework' }
+            framework_phase.add_file_reference(ump_file_ref, true)
           end
 
           # Set frameworks to Embed & Sign
