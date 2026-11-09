@@ -396,12 +396,12 @@ jobs:
           # Add frameworks to the project if they don't exist
           gma_file_ref = project.reference_for_path(gma_framework_path)
           unless gma_file_ref
-            gma_file_ref = project.new_file(gma_framework_path, :group, :group)
+            gma_file_ref = project.new_file(gma_framework_path)
           end
 
           ump_file_ref = project.reference_for_path(ump_framework_path)
           unless ump_file_ref
-            ump_file_ref = project.new_file(ump_framework_path, :group, :group)
+            ump_file_ref = project.new_file(ump_framework_path)
           end
 
           # Add frameworks to the App target's framework build phase
