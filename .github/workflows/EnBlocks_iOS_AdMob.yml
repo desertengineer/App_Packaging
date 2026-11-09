@@ -1,4 +1,4 @@
-name: EnBlocks - iOS App Store (AdMob)
+name: EnBlocks - iOS App Store (AdMob SDK 6.0.0)
 
 on:
   workflow_dispatch:
@@ -185,7 +185,7 @@ jobs:
 
           echo "::error::npm ci failed after 3 attempts."
           exit 1
-          
+
       - name: Verify pinned dependencies
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
