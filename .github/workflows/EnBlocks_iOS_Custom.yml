@@ -414,11 +414,10 @@ jobs:
           end
 
           # Set frameworks to Embed & Sign
-          project.frameworks_groups.each do |group|
-            group.children.each do |child|
-              if child.display_name == 'GoogleMobileAds.xcframework' || child.display_name == 'UserMessagingPlatform.xcframework'
-                child.settings = { 'ATTRIBUTES' => ['CodeSignOnCopy', 'RemoveHeadersOnCopy'] }
-              end
+          frameworks_group = project.frameworks_group
+          frameworks_group.children.each do |child|
+            if child.display_name == 'GoogleMobileAds.xcframework' || child.display_name == 'UserMessagingPlatform.xcframework'
+              child.settings = { 'ATTRIBUTES' => ['CodeSignOnCopy', 'RemoveHeadersOnCopy'] }
             end
           end
 
