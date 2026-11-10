@@ -446,13 +446,13 @@ jobs:
             settings = config.build_settings
 
             # Add Runpath Search Paths
-            current_runpath = settings['LD_RUNPATH_SEARCH_PATHS'] || []
+            current_runpath = Array(settings['LD_RUNPATH_SEARCH_PATHS'])
             unless current_runpath.include?('/usr/lib/swift')
               settings['LD_RUNPATH_SEARCH_PATHS'] = current_runpath + ['$(inherited)', '/usr/lib/swift']
             end
 
             # Add Other Linker Flags
-            current_flags = settings['OTHER_LDFLAGS'] || []
+            current_flags = Array(settings['OTHER_LDFLAGS'])
             unless current_flags.include?('-ObjC')
               settings['OTHER_LDFLAGS'] = current_flags + ['$(inherited)', '-ObjC']
             end
