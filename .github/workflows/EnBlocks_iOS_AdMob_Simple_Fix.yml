@@ -275,10 +275,10 @@ jobs:
             local value="$3"
 
             /usr/libexec/PlistBuddy \
-              -c "Set :$key $value" \
+              -c "Set :$key$value" \
               "$plist" 2>/dev/null || \
             /usr/libexec/PlistBuddy \
-              -c "Add :$key $type $value" \
+              -c "Add :$key $type$value" \
               "$plist"
           }
 
@@ -364,11 +364,10 @@ jobs:
           echo "PrivacyInfo.xcprivacy created successfully"
 
       # ============================================
-      # COCOAPODS INTEGRATION
-      # Use standard plugin pods - we'll replace frameworks after install
+      # REFINED COCOAPODS INTEGRATION & FRAMEWORK HANDLING
       # ============================================
 
-      - name: Update Podfile to use standard Capacitor plugins
+      - name: Update Podfile to use standard Capacitor plugins and local XCFrameworks
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
         run: |
@@ -401,8 +400,11 @@ jobs:
                   config.build_settings['SWIFT_VERSION'] = '5.0'
                   config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
                   config.build_settings['SWIFT_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+                  config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'YES'
 
-                  # Suppress warnings in third-party pods
+                  # Explicit Search Paths for Google Mobile Ads and UMP XCFrameworks
+                  config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)']
+                  config.build_settings['FRAMEWORK_SEARCH_PATHS'] << '$(PODS_ROOT)/../../'
                   config.build_settings['OTHER_SWIFT_FLAGS'] ||= ['$(inherited)']
                   config.build_settings['OTHER_SWIFT_FLAGS'] << '-suppress-warnings'
 
@@ -443,40 +445,35 @@ jobs:
           test -d Pods/Pods.xcodeproj
           test -f Podfile.lock
 
-      - name: Replace Google SDK frameworks with our versions
+      - name: Safely Link Google SDK XCFrameworks
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          # Find and replace Google-Mobile-Ads-SDK framework
-          gma_pod_target=$(grep -l "Google-Mobile-Ads-SDK" Pods/Pods.xcodeproj -r 2>/dev/null | head -1 || true)
-          
-          # Find the actual framework directory in Pods
-          gma_framework_dir=$(find Pods -type d -name "GoogleMobileAds.framework" -print -quit)
-          ump_framework_dir=$(find Pods -type d -name "UserMessagingPlatform.framework" -print -quit)
+          gma_xcframework="GoogleMobileAds.xcframework"
+          ump_xcframework="UserMessagingPlatform.xcframework"
 
-          if [[ -n "$gma_framework_dir" ]]; then
-            # Remove the CocoaPods-installed framework
-            rm -rf "$gma_framework_dir"
-            # Copy our xcframework (extract the ios-arm64 framework)
-            mkdir -p "$(dirname "$gma_framework_dir")"
-            # Copy the framework from our xcframework
-            cp -Rf GoogleMobileAds.xcframework/ios-arm64/GoogleMobileAds.framework "$gma_framework_dir"
-            echo "Replaced Google-Mobile-Ads-SDK framework with v13.12.0"
-          else
-            echo "::warning::Google-Mobile-Ads-SDK framework not found in Pods"
+          if [[ -d "$gma_xcframework" ]]; then
+            echo "Integrating XCFramework: $gma_xcframework"
+            gma_framework_dir=$(find Pods -type d -name "GoogleMobileAds.framework" -print -quit || true)
+            if [[ -n "$gma_framework_dir" && -d "$gma_framework_dir" ]]; then
+              rm -rf "$gma_framework_dir"
+              mkdir -p "$(dirname "$gma_framework_dir")"
+              cp -Rf "$gma_xcframework/ios-arm64/GoogleMobileAds.framework" "$gma_framework_dir"
+              echo "Successfully replaced GoogleMobileAds.framework"
+            fi
           fi
 
-          if [[ -n "$ump_framework_dir" ]]; then
-            # Remove the CocoaPods-installed framework
-            rm -rf "$ump_framework_dir"
-            # Copy our xcframework (extract the ios-arm64 framework)
-            mkdir -p "$(dirname "$ump_framework_dir")"
-            cp -Rf UserMessagingPlatform.xcframework/ios-arm64/UserMessagingPlatform.framework "$ump_framework_dir"
-            echo "Replaced UserMessagingPlatform framework with v2.2.0"
-          else
-            echo "::warning::UserMessagingPlatform framework not found in Pods"
+          if [[ -d "$ump_xcframework" ]]; then
+            echo "Integrating XCFramework: $ump_xcframework"
+            ump_framework_dir=$(find Pods -type d -name "UserMessagingPlatform.framework" -print -quit || true)
+            if [[ -n "$ump_framework_dir" && -d "$ump_framework_dir" ]]; then
+              rm -rf "$ump_framework_dir"
+              mkdir -p "$(dirname "$ump_framework_dir")"
+              cp -Rf "$ump_xcframework/ios-arm64/UserMessagingPlatform.framework" "$ump_framework_dir"
+              echo "Successfully replaced UserMessagingPlatform.framework"
+            fi
           fi
 
       - name: Install xcodeproj Ruby gem
@@ -497,15 +494,12 @@ jobs:
           project_path = 'App.xcodeproj'
           project = Xcodeproj::Project.open(project_path)
 
-          # Get the App target
           app_target = project.targets.find { |t| t.name == 'App' }
           abort 'App target not found' unless app_target
 
-          # Add required build settings for Google Mobile Ads SDK
           app_target.build_configurations.each do |config|
             settings = config.build_settings
 
-            # Convert to Array if not already
             current_runpath = Array(settings['LD_RUNPATH_SEARCH_PATHS'])
             unless current_runpath.include?('/usr/lib/swift')
               settings['LD_RUNPATH_SEARCH_PATHS'] = current_runpath + ['$(inherited)', '/usr/lib/swift']
@@ -516,7 +510,6 @@ jobs:
               settings['OTHER_LDFLAGS'] = current_flags + ['$(inherited)', '-ObjC']
             end
 
-            # Ensure SWIFT_VERSION is set to 5.0 or higher
             settings['SWIFT_VERSION'] = '5.0'
           end
 
@@ -802,7 +795,6 @@ jobs:
             exit 1
           fi
 
-          # Verify SKAdNetworkItems are present
           skad_count=$(/usr/libexec/PlistBuddy -c "Print :SKAdNetworkItems" "$app_path/Info.plist" 2>/dev/null | grep -c "SKAdNetworkIdentifier" || echo "0")
           if [[ "$skad_count" -lt "10" ]]; then
             echo "::error::SKAdNetworkItems not properly configured in built app."
