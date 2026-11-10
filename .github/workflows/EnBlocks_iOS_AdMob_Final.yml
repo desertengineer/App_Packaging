@@ -479,13 +479,14 @@ jobs:
       # Update Podfile to use local frameworks and avoid conflicts
       # ============================================
 
-      - name: Update Podfile for local Google SDK frameworks
+      - name: Update Podfile to avoid Google SDK conflicts
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          # Create a new Podfile that uses local frameworks
+          # Create a new Podfile that does NOT include Google SDK pods
+          # We'll manually add the xcframeworks via Ruby script instead
           cat > Podfile <<'EOF'
           require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
 
@@ -498,19 +499,12 @@ jobs:
           def capacitor_pods
             pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
             pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-            # Use local Google SDK frameworks instead of CocoaPods versions
-            # This avoids conflicts with the manually added xcframeworks
             pod 'CapacitorCommunityAdmob', :path => '../../node_modules/@capacitor-community/admob'
             pod 'CapacitorPluginAppTrackingTransparency', :path => '../../node_modules/capacitor-plugin-app-tracking-transparency'
           end
 
           target 'App' do
             capacitor_pods
-
-            # Use local GoogleMobileAds.xcframework (13.12.0)
-            # This overrides the plugin's dependency on Google-Mobile-Ads-SDK 11.3.0
-            pod 'GoogleMobileAds', :path => 'GoogleMobileAds.xcframework'
-            pod 'UserMessagingPlatform', :path => 'UserMessagingPlatform.xcframework'
 
             post_install do |installer|
               assertDeploymentTarget(installer)
