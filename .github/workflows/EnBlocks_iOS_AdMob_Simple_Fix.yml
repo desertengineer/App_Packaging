@@ -275,10 +275,10 @@ jobs:
             local value="$3"
 
             /usr/libexec/PlistBuddy \
-              -c "Set :$key$value" \
+              -c "Set :$key $value" \
               "$plist" 2>/dev/null || \
             /usr/libexec/PlistBuddy \
-              -c "Add :$key $type$value" \
+              -c "Add :$key $type $value" \
               "$plist"
           }
 
