@@ -363,6 +363,9 @@ jobs:
 
       # ============================================
       # GOOGLE MOBILE ADS SDK INTEGRATION
+      # Note: The @capacitor-community/admob plugin already includes
+      # Google Mobile Ads SDK, so we don't need to manually add frameworks.
+      # We just need to ensure the build settings are configured correctly.
       # ============================================
 
       - name: Install xcodeproj Ruby gem
@@ -370,60 +373,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           gem install xcodeproj --no-document
-
-      - name: Add Google Mobile Ads SDK frameworks to Xcode project
-        working-directory: ${{ env.TARGET_DIR }}/ios/App
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          ruby <<'RUBY'
-          require 'xcodeproj'
-          require 'pathname'
-
-          project_path = 'App.xcodeproj'
-          project = Xcodeproj::Project.open(project_path)
-
-          # Get the App target
-          app_target = project.targets.find { |t| t.name == 'App' }
-          abort 'App target not found' unless app_target
-
-          # Framework paths - use absolute paths as required by xcodeproj
-          # The frameworks are in the same directory as the Xcode project
-          gma_framework_path = File.expand_path('GoogleMobileAds.xcframework')
-          ump_framework_path = File.expand_path('UserMessagingPlatform.xcframework')
-
-          # Add frameworks to the project if they don't exist
-          gma_file_ref = project.reference_for_path(gma_framework_path)
-          unless gma_file_ref
-            gma_file_ref = project.new_file(gma_framework_path)
-          end
-
-          ump_file_ref = project.reference_for_path(ump_framework_path)
-          unless ump_file_ref
-            ump_file_ref = project.new_file(ump_framework_path)
-          end
-
-          # Add frameworks to the App target's framework build phase
-          framework_phase = app_target.frameworks_build_phases
-          unless framework_phase.files.any? { |f| f.file_ref.display_name == 'GoogleMobileAds.xcframework' }
-            framework_phase.add_file_reference(gma_file_ref, true)
-          end
-          unless framework_phase.files.any? { |f| f.file_ref.display_name == 'UserMessagingPlatform.xcframework' }
-            framework_phase.add_file_reference(ump_file_ref, true)
-          end
-
-          # Set frameworks to Embed & Sign
-          frameworks_group = project.frameworks_group
-          frameworks_group.children.each do |child|
-            if child.display_name == 'GoogleMobileAds.xcframework' || child.display_name == 'UserMessagingPlatform.xcframework'
-              child.settings = { 'ATTRIBUTES' => ['CodeSignOnCopy', 'RemoveHeadersOnCopy'] }
-            end
-          end
-
-          project.save
-          puts 'Added GoogleMobileAds.xcframework and UserMessagingPlatform.xcframework to project'
-          RUBY
 
       - name: Configure build settings for Google Mobile Ads SDK
         working-directory: ${{ env.TARGET_DIR }}/ios/App
@@ -442,6 +391,7 @@ jobs:
           abort 'App target not found' unless app_target
 
           # Add required build settings for Google Mobile Ads SDK
+          # These are required by Google's official SDK
           app_target.build_configurations.each do |config|
             settings = config.build_settings
 
