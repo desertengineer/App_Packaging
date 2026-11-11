@@ -90,6 +90,29 @@ jobs:
             exit 1
           fi
 
+      - name: Install iOS platform for Xcode
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          echo "Selected Xcode:"
+          xcodebuild -version
+
+          echo "Downloading iOS platform components..."
+          xcodebuild -downloadPlatform iOS
+
+          echo "Installed iOS SDKs:"
+          xcodebuild -showsdks
+
+          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "Active iOS SDK version: $sdk_version"
+
+          sdk_major="${sdk_version%%.*}"
+          if [[ "$sdk_major" -lt 26 ]]; then
+            echo "::error::The selected Xcode does not have the required iOS 26 SDK. Found: $sdk_version"
+            exit 1
+          fi
+
       - name: Verify Xcode SDK version
         shell: bash
         run: |
