@@ -443,37 +443,6 @@ jobs:
           test -d Pods/Pods.xcodeproj
           test -f Podfile.lock
 
-      - name: Safely Link Google SDK XCFrameworks
-        working-directory: ${{ env.TARGET_DIR }}/ios/App
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          gma_xcframework="GoogleMobileAds.xcframework"
-          ump_xcframework="UserMessagingPlatform.xcframework"
-
-          if [[ -d "$gma_xcframework" ]]; then
-            echo "Integrating XCFramework: $gma_xcframework"
-            gma_framework_dir=$(find Pods -type d -name "GoogleMobileAds.framework" -print -quit || true)
-            if [[ -n "$gma_framework_dir" && -d "$gma_framework_dir" ]]; then
-              rm -rf "$gma_framework_dir"
-              mkdir -p "$(dirname "$gma_framework_dir")"
-              cp -Rf "$gma_xcframework/ios-arm64/GoogleMobileAds.framework" "$gma_framework_dir"
-              echo "Successfully replaced GoogleMobileAds.framework"
-            fi
-          fi
-
-          if [[ -d "$ump_xcframework" ]]; then
-            echo "Integrating XCFramework: $ump_xcframework"
-            ump_framework_dir=$(find Pods -type d -name "UserMessagingPlatform.framework" -print -quit || true)
-            if [[ -n "$ump_framework_dir" && -d "$ump_framework_dir" ]]; then
-              rm -rf "$ump_framework_dir"
-              mkdir -p "$(dirname "$ump_framework_dir")"
-              cp -Rf "$ump_xcframework/ios-arm64/UserMessagingPlatform.framework" "$ump_framework_dir"
-              echo "Successfully replaced UserMessagingPlatform.framework"
-            fi
-          fi
-
       - name: Install xcodeproj Ruby gem
         shell: bash
         run: |
