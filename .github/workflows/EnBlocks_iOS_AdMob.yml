@@ -1,4 +1,4 @@
-name: EnBlocks - iOS App Store (Simple Fix - Framework Replacement)
+name: EnBlocks - iOS App Store (AdMob SDK) Release
 
 on:
   workflow_dispatch:
