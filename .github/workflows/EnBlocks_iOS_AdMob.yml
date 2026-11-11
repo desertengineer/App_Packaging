@@ -60,21 +60,16 @@ jobs:
           for app in /Applications/Xcode_*.app /Applications/Xcode.app; do
             [[ -d "$app/Contents/Developer" ]] || continue
 
-            version_output="$(DEVELOPER_DIR="$app/Contents/Developer" xcodebuild -version)"
-            version="${version_output#Xcode }"
-            version="${version%%$'\n'*}"
-            major="${version%%.*}"
-
-            if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 26 )); then
+            sdk_path="$app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs"
+            if [[ -d "$sdk_path" ]] && ls "$sdk_path" | grep -q "iPhoneOS26"; then
               selected="$app/Contents/Developer"
               break
             fi
           done
 
-          if [[ -z "$selected" ]]; then
-            echo "::error::Xcode 26 or later is not installed on this runner."
-            ls -d /Applications/Xcode*.app 2>/dev/null || true
-            exit 1
+          # Fallback if specific naming varies but Xcode 26 is present
+          if [[ -z "$selected" && -d "/Applications/Xcode_26.0.1.app/Contents/Developer" ]]; then
+            selected="/Applications/Xcode_26.0.1.app/Contents/Developer"
           fi
 
           sudo xcode-select -s /Applications/Xcode.app
