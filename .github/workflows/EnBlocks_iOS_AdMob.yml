@@ -718,6 +718,30 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$plist" 2>/dev/null || \
           /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUILD_NUMBER" "$plist"
 
+      - name: Fix AdMob SDK initialization in AppDelegate
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("ios/App/App/AppDelegate.swift")
+          source = path.read_text(encoding="utf-8")
+
+          old = "MobileAds.shared.start()"
+          new = "GADMobileAds.sharedInstance().start(completionHandler: nil)"
+
+          if old not in source:
+              raise SystemExit(
+                  f"Expected initialization call was not found in {path}. "
+                  "Check the current AppDelegate.swift before applying this patch."
+              )
+
+          path.write_text(source.replace(old, new), encoding="utf-8")
+          print(f"Updated AdMob initialization in {path}")
+          PY
       # ============================================
       # BUILD & ARCHIVE
       # ============================================
