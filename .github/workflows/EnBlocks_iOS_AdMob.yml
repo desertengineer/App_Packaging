@@ -183,37 +183,109 @@ jobs:
           echo "::error::npm ci failed after 3 attempts."
           exit 1
 
-      - name: Patch AdMob UMP Swift enum name
+      - name: Patch AdMob consent code for current UMP Swift API
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          python3 <<'PY'
-          from pathlib import Path
+          consent_file="node_modules/@capacitor-community/admob/ios/Plugin/Consent/ConsentExecutor.swift"
+          test -f "$consent_file"
 
-          path = Path(
-              "node_modules/@capacitor-community/admob/ios/Plugin/Consent/ConsentExecutor.swift"
-          )
+          cat > "$consent_file" <<'SWIFT'
+          import Foundation
+          import Capacitor
+          import GoogleMobileAds
+          import UserMessagingPlatform
 
-          if not path.is_file():
-              raise SystemExit(f"AdMob consent source not found: {path}")
+          class ConsentExecutor: NSObject {
+              public weak var plugin: AdMob?
 
-          source = path.read_text(encoding="utf-8")
+              func requestConsentInfo(
+                  _ call: CAPPluginCall,
+                  _ debugGeography: Int,
+                  _ testDeviceIdentifiers: [String],
+                  _ tagForUnderAgeOfConsent: Bool
+              ) {
+                  Task { @MainActor in
+                      let parameters = RequestParameters()
+                      let debugSettings = DebugSettings()
 
-          if "UMPConsentStatus" not in source:
-              raise SystemExit(
-                  "Expected UMPConsentStatus was not found. "
-                  "Check the installed AdMob plugin version before continuing."
-              )
+                      debugSettings.geography =
+                          DebugGeography(rawValue: debugGeography) ?? .disabled
+                      debugSettings.testDeviceIdentifiers = testDeviceIdentifiers
 
-          path.write_text(
-              source.replace("UMPConsentStatus", "ConsentStatus"),
-              encoding="utf-8"
-          )
+                      parameters.debugSettings = debugSettings
+                      parameters.isTaggedForUnderAgeOfConsent = tagForUnderAgeOfConsent
 
-          print(f"Patched UMP enum name in {path}")
-          PY
+                      do {
+                          try await ConsentInformation.shared
+                              .requestConsentInfoUpdate(with: parameters)
+
+                          let information = ConsentInformation.shared
+                          call.resolve([
+                              "status": self.getConsentStatusString(information.consentStatus),
+                              "isConsentFormAvailable":
+                                  information.formStatus == FormStatus.available
+                          ])
+                      } catch {
+                          call.reject("Request consent info failed: \(error.localizedDescription)")
+                      }
+                  }
+              }
+
+              func showConsentForm(_ call: CAPPluginCall) {
+                  Task { @MainActor in
+                      guard let rootViewController = self.plugin?.getRootVC() else {
+                          call.reject("No ViewController")
+                          return
+                      }
+
+                      let information = ConsentInformation.shared
+
+                      guard information.formStatus == FormStatus.available else {
+                          call.reject("Consent Form not available")
+                          return
+                      }
+
+                      do {
+                          if information.consentStatus == ConsentStatus.required {
+                              let form = try await ConsentForm.load()
+                              try await form.present(from: rootViewController)
+                          }
+
+                          call.resolve([
+                              "status": self.getConsentStatusString(
+                                  ConsentInformation.shared.consentStatus
+                              )
+                          ])
+                      } catch {
+                          call.reject("Consent form failed: \(error.localizedDescription)")
+                      }
+                  }
+              }
+
+              func resetConsentInfo(_ call: CAPPluginCall) {
+                  ConsentInformation.shared.reset()
+                  call.resolve([:])
+              }
+
+              func getConsentStatusString(_ consentStatus: ConsentStatus) -> String {
+                  switch consentStatus {
+                  case .required:
+                      return "REQUIRED"
+                  case .notRequired:
+                      return "NOT_REQUIRED"
+                  case .obtained:
+                      return "OBTAINED"
+                  default:
+                      return "UNKNOWN"
+                  }
+              }
+          }
+          SWIFT
+
+          echo "Patched AdMob ConsentExecutor.swift for current UMP Swift API"
 
       - name: Configure Capacitor
         working-directory: ${{ env.TARGET_DIR }}
