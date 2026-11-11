@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build-ios:
     name: Build and upload EnBlocks iOS app
-    runs-on: macos-15
+    runs-on: macos-26
     environment: MagicBlockBlitz-Environment
     timeout-minutes: 60
 
@@ -45,36 +45,50 @@ jobs:
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       BASE64_PROVISIONING_PROFILE: ${{ secrets.BASE64_PROVISIONING_PROFILE }}
       APP_STORE_CONNECT_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
-      MIN_IOS_SDK: 15
+      MIN_IOS_SDK: 26
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Select Default Xcode
+      - name: Select Xcode 26 and verify iOS SDK
         shell: bash
         run: |
           set -Eeuo pipefail
 
           selected=""
-          for app in /Applications/Xcode_*.app /Applications/Xcode.app; do
+          for app in /Applications/Xcode_26*.app /Applications/Xcode.app; do
             [[ -d "$app/Contents/Developer" ]] || continue
 
             sdk_path="$app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs"
-            if [[ -d "$sdk_path" ]] && ls "$sdk_path" | grep -q "iPhoneOS26"; then
+            [[ -d "$sdk_path" ]] || continue
+
+            if compgen -G "$sdk_path/iPhoneOS26*.sdk" > /dev/null; then
               selected="$app/Contents/Developer"
               break
             fi
           done
 
-          # Fallback if specific naming varies but Xcode 26 is present
-          if [[ -z "$selected" && -d "/Applications/Xcode_26.0.1.app/Contents/Developer" ]]; then
-            selected="/Applications/Xcode_26.0.1.app/Contents/Developer"
+          if [[ -z "$selected" ]]; then
+            echo "::error::No Xcode installation with the iOS 26 SDK was found."
+            echo "Installed Xcode apps:"
+            ls -d /Applications/Xcode*.app 2>/dev/null || true
+            exit 1
           fi
 
-          sudo xcode-select -s /Applications/Xcode.app
+          sudo xcode-select -s "$selected"
+
+          echo "Selected developer directory: $(xcode-select -p)"
           xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
+
+          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "Selected iOS SDK: $sdk_version"
+
+          sdk_major="${sdk_version%%.*}"
+          if [[ "$sdk_major" -lt 26 ]]; then
+            echo "::error::App Store Connect requires the iOS 26 SDK or newer; found $sdk_version."
+            exit 1
+          fi
 
       - name: Verify Xcode SDK version
         shell: bash
