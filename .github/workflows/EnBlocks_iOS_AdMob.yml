@@ -183,6 +183,38 @@ jobs:
           echo "::error::npm ci failed after 3 attempts."
           exit 1
 
+      - name: Patch AdMob UMP Swift enum name
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path(
+              "node_modules/@capacitor-community/admob/ios/Plugin/Consent/ConsentExecutor.swift"
+          )
+
+          if not path.is_file():
+              raise SystemExit(f"AdMob consent source not found: {path}")
+
+          source = path.read_text(encoding="utf-8")
+
+          if "UMPConsentStatus" not in source:
+              raise SystemExit(
+                  "Expected UMPConsentStatus was not found. "
+                  "Check the installed AdMob plugin version before continuing."
+              )
+
+          path.write_text(
+              source.replace("UMPConsentStatus", "ConsentStatus"),
+              encoding="utf-8"
+          )
+
+          print(f"Patched UMP enum name in {path}")
+          PY
+
       - name: Configure Capacitor
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -360,7 +392,7 @@ jobs:
       # REFINED COCOAPODS INTEGRATION & FRAMEWORK HANDLING
       # ============================================
 
-      - name: Update Podfile to use standard Capacitor plugins
+      - name: Update Podfile for Capacitor and AdMob
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
         run: |
@@ -388,33 +420,10 @@ jobs:
             post_install do |installer|
               assertDeploymentTarget(installer)
 
-             installer.pods_project.targets.each do |target|
+              installer.pods_project.targets.each do |target|
                 target.build_configurations.each do |config|
                   config.build_settings['SWIFT_VERSION'] = '5.0'
-                  config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
-                  config.build_settings['SWIFT_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
-                  config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'YES' 
-                  config.build_settings['SKIP_INSTALL'] = 'NO' # Fixed assignment
-                  config.build_settings['DEFINES_MODULE'] = 'YES'
-
-                  # Correct framework search paths pointing to Pods directory
-                  config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)']
-                  config.build_settings['FRAMEWORK_SEARCH_PATHS'] << '${PODS_ROOT}/Google-Mobile-Ads-SDK'
-                  config.build_settings['FRAMEWORK_SEARCH_PATHS'] << '${PODS_ROOT}/GoogleUserMessagingPlatform'
-
-                  # Suppress warnings in third-party pods
-                  config.build_settings['OTHER_SWIFT_FLAGS'] ||= ['$(inherited)']
-                  config.build_settings['OTHER_SWIFT_FLAGS'] << '-suppress-warnings'
-
-                  if config.name.include?('Debug')
-                    config.build_settings['SWIFT_OPTIMIZATION_LEVEL'] = '-Onone'
-                  else
-                    config.build_settings['SWIFT_OPTIMIZATION_LEVEL'] = '-O'
-                  end
-
                   config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
-                  config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'
-
                   config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
                   config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
                   config.build_settings['CODE_SIGN_IDENTITY'] = ''
