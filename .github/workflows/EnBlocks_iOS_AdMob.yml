@@ -179,9 +179,7 @@ jobs:
             "ios/App/App.xcworkspace"
             "ios/App/App.xcodeproj"
             "ios/App/Podfile"
-            "ios/App/App/Info.plist"
-            "ios/App/GoogleMobileAds.xcframework"
-            "ios/App/UserMessagingPlatform.xcframework"
+            "ios/App/App/Info.plist" 
           )
 
           for path in "${required_paths[@]}"; do
