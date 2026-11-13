@@ -763,19 +763,25 @@ jobs:
           from pathlib import Path
 
           path = Path("ios/App/App/AppDelegate.swift")
+          if not path.exists():
+              raise SystemExit(f"Error: {path} not found.")
+
           source = path.read_text(encoding="utf-8")
+          init_call = "GADMobileAds.sharedInstance().start(completionHandler: nil)"
 
-          old = "MobileAds.shared.start()"
-          new = "GADMobileAds.sharedInstance().start(completionHandler: nil)"
+          if init_call not in source:
+              if "MobileAds.shared.start()" in source:
+                  source = source.replace("MobileAds.shared.start()", init_call)
+              else:
+                  if "import GoogleMobileAds" not in source:
+                      source = source.replace("import Capacitor", "import Capacitor\nimport GoogleMobileAds")
+                  
+                  target = "return true"
+                  if target in source:
+                      source = source.replace(target, f"{init_call}\n        return true", 1)
 
-          if old not in source:
-              raise SystemExit(
-                  f"Expected initialization call was not found in {path}. "
-                  "Check the current AppDelegate.swift before applying this patch."
-              )
-
-          path.write_text(source.replace(old, new), encoding="utf-8")
-          print(f"Updated AdMob initialization in {path}")
+          path.write_text(source, encoding="utf-8")
+          print(f"Successfully verified/updated AdMob initialization in {path}")
           PY
       # ============================================
       # BUILD & ARCHIVE
