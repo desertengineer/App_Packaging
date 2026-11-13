@@ -819,6 +819,15 @@ jobs:
 
           test -d "$archive_path/Products/Applications/App.app"
 
+      - name: Save app dSYM for crash diagnosis
+        if: success()
+        uses: actions/upload-artifact@v5
+        with:
+          name: App-dSYM-${{ github.run_number }}
+          path: ${{ runner.temp }}/EnBlocks.xcarchive/dSYMs/App.app.dSYM
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Upload Xcode archive log
         if: always()
         uses: actions/upload-artifact@v5
