@@ -1,0 +1,2 @@
+Please follow the following SDK integration document for SDK integration. When integrating, please verify whether the package name of the downloaded file matches that in the integration document. If you have any questions, please contact your AM or technical support.
+SDK Integration Document  : https://help.toponad.net/access?email=101_demo@toponad.com&phone=12345678101&timestamp=1952455655&secret=84bb14a904d8c4e7e779ad7c6b4f193ce43969ce45844fe7ad8192dafa8947c0&slug=vxp6Qy

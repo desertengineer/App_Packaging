@@ -498,7 +498,6 @@ jobs:
       # ============================================
       # REFINED COCOAPODS INTEGRATION & FRAMEWORK HANDLING
       # ============================================
-
       - name: Update Podfile for Capacitor and AdMob
         working-directory: ${{ env.TARGET_DIR }}/ios/App
         shell: bash
@@ -531,6 +530,14 @@ jobs:
                 target.build_configurations.each do |config|
                   config.build_settings['SWIFT_VERSION'] = '5.0'
                   config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+                  config.build_settings['DEFINES_MODULE'] = 'YES'
+                  
+                  # Force load Objective-C categories to prevent SIGABRT crash on startup
+                  config.build_settings['OTHER_LDFLAGS'] ||= ['$(inherited)']
+                  unless config.build_settings['OTHER_LDFLAGS'].include?('-ObjC')
+                    config.build_settings['OTHER_LDFLAGS'] << '-ObjC'
+                  end
+
                   config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
                   config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
                   config.build_settings['CODE_SIGN_IDENTITY'] = ''

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@string/secmtp_*,@drawable/secmtp_*,@layout/secmtp_*,@id/secmtp_*,@dimen/secmtp_*,@style/secmtp_*,@color/secmtp_*,@string/sdm_*,@drawable/sdm_*,@layout/sdm_*,@id/sdm_*,@dimen/sdm_*,@style/sdm_*,@color/sdm_*,@anim/sdm_*"
+    tools:shrinkMode="safe" />

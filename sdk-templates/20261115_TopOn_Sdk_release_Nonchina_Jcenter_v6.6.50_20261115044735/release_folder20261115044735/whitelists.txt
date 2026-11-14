@@ -1,0 +1,17 @@
+R.string.secmtp_*
+R.drawable.secmtp_*
+R.layout.secmtp_*
+R.id.secmtp_*
+R.dimen.secmtp_*
+R.style.secmtp_*
+R.color.secmtp_*
+ 
+R.string.sdm_*
+R.drawable.sdm_*
+R.layout.sdm_*
+R.id.sdm_*
+R.dimen.sdm_*
+R.style.sdm_*
+R.color.sdm_*
+R.anim.sdm_*
+ 
