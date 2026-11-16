@@ -760,73 +760,6 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$plist" 2>/dev/null || \
           /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUILD_NUMBER" "$plist"
 
-      - name: Enforce ATT-First Lifecycle in AppDelegate
-        working-directory: ${{ env.TARGET_DIR }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          python3 <<'PY'
-          from pathlib import Path
-
-          path = Path("ios/App/App/AppDelegate.swift")
-          if not path.exists():
-              raise SystemExit(f"Error: {path} not found.")
-
-          source = path.read_text(encoding="utf-8")
-
-          # 1. Remove any premature AdMob startup from didFinishLaunchingWithOptions
-          for old_call in [
-              "GADMobileAds.sharedInstance().start(completionHandler: nil)",
-              "MobileAds.shared.start()"
-          ]:
-              source = source.replace(old_call, "")
-
-          # 2. Ensure required frameworks are imported
-          for mod in ["AppTrackingTransparency", "AdSupport", "GoogleMobileAds"]:
-              if f"import {mod}" not in source:
-                  source = source.replace("import Capacitor", f"import Capacitor\nimport {mod}", 1)
-
-          # 3. Inject ATT-first sequence inside applicationDidBecomeActive
-          att_hook = """
-          private var didRequestTracking = false
-
-          func applicationDidBecomeActive(_ application: UIApplication) {
-              guard !didRequestTracking else { return }
-              didRequestTracking = true
-
-              DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                  if #available(iOS 14, *) {
-                      ATTrackingManager.requestTrackingAuthorization { _ in
-                          DispatchQueue.main.async {
-                              GADMobileAds.sharedInstance().start(completionHandler: nil)
-                          }
-                      }
-                  } else {
-                      GADMobileAds.sharedInstance().start(completionHandler: nil)
-                  }
-              }
-          }
-          """
-
-          if "func applicationDidBecomeActive" in source:
-              # Replace existing applicationDidBecomeActive block cleanly
-              import re
-              source = re.sub(
-                  r"func applicationDidBecomeActive\(_ application: UIApplication\)\s*\{[^}]*\}",
-                  att_hook.strip(),
-                  source,
-                  count=1
-              )
-          else:
-              last_brace = source.rfind("}")
-              if last_brace != -1:
-                  source = source[:last_brace] + "\n" + att_hook + "\n}\n"
-
-          path.write_text(source, encoding="utf-8")
-          print("Successfully configured ATT-before-AdMob lifecycle in AppDelegate.swift")
-          PY
-          
       - name: Ensure AppDelegate defers AdMob startup until ATT completes
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
@@ -843,22 +776,25 @@ jobs:
 
           source = path.read_text(encoding="utf-8")
 
-          # Remove any premature native AdMob SDK startup calls from AppDelegate.swift
+          # Remove any premature native AdMob or duplicate native ATT code
           patterns = [
               r"^\s*GADMobileAds\.sharedInstance\(\)\.start\(.*?\)\s*\n?",
               r"^\s*MobileAds\.shared\.start\(.*?\)\s*\n?",
               r"^\s*import GoogleMobileAds\s*\n?",
+              r"^\s*import AppTrackingTransparency\s*\n?",
+              r"^\s*import AdSupport\s*\n?",
           ]
 
           for pattern in patterns:
               source = re.sub(pattern, "", source, flags=re.MULTILINE)
 
-          # Safety check: fail the build if any MobileAds startup call remains
-          if "GADMobileAds" in source or "MobileAds.shared.start" in source:
-              raise SystemExit("Error: Premature AdMob initialization still exists in AppDelegate.swift")
+          # Fail build if premature AdMob or duplicate native ATT calls remain
+          for forbidden in ["GADMobileAds", "MobileAds.shared.start", "ATTrackingManager"]:
+              if forbidden in source:
+                  raise SystemExit(f"Error: Found {forbidden} in AppDelegate.swift; remove it so www/index.js controls ATT -> AdMob.")
 
           path.write_text(source, encoding="utf-8")
-          print(f"Verified clean AppDelegate.swift (AdMob initialization deferred to WebView ATT flow): {path}")
+          print(f"Verified clean AppDelegate.swift (ATT and AdMob controlled strictly by www/index.js): {path}")
           PY
 
       # ============================================
@@ -996,7 +932,7 @@ jobs:
           fi
 
           skad_count=$(/usr/libexec/PlistBuddy -c "Print :SKAdNetworkItems" "$app_path/Info.plist" 2>/dev/null | grep -c "SKAdNetworkIdentifier" || echo "0")
-          if [[ "$skad_count" -lt "10" ]]; then
+          if [[ -z "$skad_count" || "$skad_count" -lt "10" ]]; then
             echo "::error::SKAdNetworkItems not properly configured in built app."
             exit 1
           fi
@@ -1044,9 +980,9 @@ jobs:
         if: always()
         shell: bash
         run: |
-          set +e
+          set -Eeuo pipefail
           if [[ -n "${KEYCHAIN_PATH:-}" ]]; then
-            security delete-keychain "$KEYCHAIN_PATH"
+            security delete-keychain "$KEYCHAIN_PATH" || true
           fi
           rm -f "$RUNNER_TEMP/certificate.p12"
           rm -f "$RUNNER_TEMP/profile.mobileprovision"
