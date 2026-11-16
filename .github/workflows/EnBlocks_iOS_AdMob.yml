@@ -826,6 +826,41 @@ jobs:
           path.write_text(source, encoding="utf-8")
           print("Successfully configured ATT-before-AdMob lifecycle in AppDelegate.swift")
           PY
+          
+      - name: Ensure AppDelegate defers AdMob startup until ATT completes
+        working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          python3 <<'PY'
+          import re
+          from pathlib import Path
+
+          path = Path("ios/App/App/AppDelegate.swift")
+          if not path.exists():
+              raise SystemExit(f"Error: {path} not found.")
+
+          source = path.read_text(encoding="utf-8")
+
+          # Remove any premature native AdMob SDK startup calls from AppDelegate.swift
+          patterns = [
+              r"^\s*GADMobileAds\.sharedInstance\(\)\.start\(.*?\)\s*\n?",
+              r"^\s*MobileAds\.shared\.start\(.*?\)\s*\n?",
+              r"^\s*import GoogleMobileAds\s*\n?",
+          ]
+
+          for pattern in patterns:
+              source = re.sub(pattern, "", source, flags=re.MULTILINE)
+
+          # Safety check: fail the build if any MobileAds startup call remains
+          if "GADMobileAds" in source or "MobileAds.shared.start" in source:
+              raise SystemExit("Error: Premature AdMob initialization still exists in AppDelegate.swift")
+
+          path.write_text(source, encoding="utf-8")
+          print(f"Verified clean AppDelegate.swift (AdMob initialization deferred to WebView ATT flow): {path}")
+          PY
+
       # ============================================
       # BUILD & ARCHIVE
       # ============================================
