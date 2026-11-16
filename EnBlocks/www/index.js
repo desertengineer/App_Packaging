@@ -1,5 +1,5 @@
 // App initialization is deferred to DOMContentLoaded and native Capacitor ready
-// to comply with iOS threading and Capacitor lifecycle requirements.
+// to comply with iOS threading, App Tracking Transparency (ATT), and Capacitor lifecycle requirements.
 
 // ==========================================
 // Core Variables & Setup
@@ -49,35 +49,88 @@ let dragOffsetX = 0, dragOffsetY = 0, hoverGridX = -1, hoverGridY = -1, boardCel
 let musicVol = 0.5; let sfxVol = 0.8;
 
 // ============================================================
-// Update AdMob integration
+// App Tracking Transparency (ATT) & Capacitor AdMob Integration
+// Strictly complies with Apple Guideline 2.1 & 5.1.2
 // ============================================================
+
+let attRequestPromise = null;
+
+function isNativeCapacitorApp() {
+    return Boolean(
+        window.Capacitor &&
+        typeof window.Capacitor.isNativePlatform === 'function' &&
+        window.Capacitor.isNativePlatform()
+    );
+}
+
+async function waitForAppForegroundAndPlugin(maxAttempts = 30) {
+    // 1. Wait until the WebView document is actively visible on screen
+    if (document.visibilityState !== 'visible') {
+        await new Promise((resolve) => {
+            const onVisChange = () => {
+                if (document.visibilityState === 'visible') {
+                    document.removeEventListener('visibilitychange', onVisChange);
+                    resolve();
+                }
+            };
+            document.addEventListener('visibilitychange', onVisChange);
+        });
+    }
+
+    // 2. Poll until both Capacitor ATT and AdMob native bridges are ready
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const plugins = window.Capacitor?.Plugins;
+        if (plugins?.AppTrackingTransparency && plugins?.AdMob) {
+            return plugins;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+
+    return window.Capacitor?.Plugins ?? null;
+}
+
 async function requestATTBeforeAds() {
     if (!isNativeCapacitorApp()) {
         return 'not-native';
     }
 
-    const att = window.Capacitor?.Plugins?.AppTrackingTransparency;
-
-    if (!att?.getStatus || !att?.requestPermission) {
-        throw new Error(
-            'AppTrackingTransparency plugin is missing or not registered.'
-        );
+    // Prevent duplicate concurrent ATT requests
+    if (attRequestPromise) {
+        return attRequestPromise;
     }
 
-    let result = await att.getStatus();
-    let status = result?.status ?? result;
+    attRequestPromise = (async () => {
+        try {
+            const plugins = await waitForAppForegroundAndPlugin();
+            const att = plugins?.AppTrackingTransparency;
 
-    if (status === 'notDetermined') {
-        result = await att.requestPermission();
-        status = result?.status ?? result;
-    }
+            if (!att?.getStatus || !att?.requestPermission) {
+                console.warn('AppTrackingTransparency plugin not available yet.');
+                return 'unavailable';
+            }
 
-    console.info('ATT authorization status:', status);
-    return status;
+            let result = await att.getStatus();
+            let status = result?.status ?? result;
+
+            if (status === 'notDetermined') {
+                // Short buffer so iOS UIWindowScene is 100% interactive
+                await new Promise((resolve) => setTimeout(resolve, 400));
+                result = await att.requestPermission();
+                status = result?.status ?? result;
+            }
+
+            console.info('ATT authorization status resolved:', status);
+            return status;
+        } catch (err) {
+            console.warn('ATT prompt error:', err);
+            return 'error';
+        } finally {
+            attRequestPromise = null;
+        }
+    })();
+
+    return attRequestPromise;
 }
-// ============================================================
-// Capacitor AdMob integration
-// ============================================================
 
 const getAdMob = () => {
     try {
@@ -132,35 +185,9 @@ function hasValidAdUnitId(value) {
     );
 }
 
-function isNativeCapacitorApp() {
-    return Boolean(
-        window.Capacitor &&
-        typeof window.Capacitor.isNativePlatform === 'function' &&
-        window.Capacitor.isNativePlatform()
-    );
-}
-
-async function waitForAdMobPlugin(maxAttempts = 20) {
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const AdMob = getAdMob();
-
-        if (AdMob) {
-            return AdMob;
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 250));
-    }
-
-    return null;
-}
-
 async function initEnBlocksMonetization() {
-    if (isAdMobInitialized) {
-        return true;
-    }
-
-    if (isAdMobInitializing) {
-        return false;
+    if (isAdMobInitialized || isAdMobInitializing) {
+        return isAdMobInitialized;
     }
 
     if (!isNativeCapacitorApp()) {
@@ -180,20 +207,20 @@ async function initEnBlocksMonetization() {
     isAdMobInitializing = true;
 
     try {
-        const AdMob = await waitForAdMobPlugin();
+        const plugins = await waitForAppForegroundAndPlugin();
+        const AdMob = plugins?.AdMob;
 
         if (!AdMob) {
             console.warn('AdMob plugin is unavailable.');
             return false;
         }
 
+        // STEP 1: Strictly request ATT permission BEFORE initializing AdMob
         const trackingStatus = await requestATTBeforeAds();
+        console.info('Proceeding to AdMob init with ATT status:', trackingStatus);
 
-        // Continue to initialize AdMob only after the ATT status is known.
-        // If the user denied or is restricted, do not track them.
-        console.info('Continuing with ATT status:', trackingStatus);
-
-
+        // STEP 2: Initialize AdMob ONLY after user responds to ATT dialog
+        // requestTrackingAuthorization is false because we handled ATT explicitly above
         await AdMob.initialize({
             requestTrackingAuthorization: false,
             initializeForTesting: false
@@ -202,14 +229,14 @@ async function initEnBlocksMonetization() {
         isAdMobInitialized = true;
         await attachAdEventListeners();
 
-        // Let the first WebView layout complete before requesting ads.
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // STEP 3: Load ads only after ATT + SDK initialization complete
+        await new Promise((resolve) => setTimeout(resolve, 600));
 
         void preloadInterstitialAd();
         void preloadRewardedAd();
         void showBannerAd();
 
-        console.info('AdMob initialized successfully.');
+        console.info('AdMob initialized successfully after ATT.');
         return true;
     } catch (error) {
         isAdMobInitialized = false;
@@ -536,11 +563,6 @@ function closeSettings() { const el = document.getElementById('settings-screen')
 function openRobotMenu() { const s = document.getElementById('start-screen'), r = document.getElementById('robot-menu'); if (s) s.classList.add('hidden-screen'); if (r) r.classList.remove('hidden-screen'); }
 function closeRobotMenu() { const s = document.getElementById('start-screen'), r = document.getElementById('robot-menu'); if (r) r.classList.add('hidden-screen'); if (s) s.classList.remove('hidden-screen'); }
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', safeAppInit, { once: true });
-} else {
-    safeAppInit();
-}
 function setupSettingsControls() {
     const musicSlider = document.getElementById('music-slider');
 
@@ -1384,7 +1406,17 @@ function checkGameOverVsPlayer() {
     }
 }
 
+// ==========================================
+// Single Guarded Startup Sequence
+// ==========================================
+let hasAppInitialized = false;
+
 function safeAppInit() {
+    if (hasAppInitialized) {
+        return;
+    }
+    hasAppInitialized = true;
+
     console.log('EnBlocks web application loaded safely.');
 
     setupSettingsControls();
@@ -1400,17 +1432,14 @@ function safeAppInit() {
         startScreen.classList.remove('hidden-screen');
     }
 
+    // Trigger ATT prompt -> AdMob initialization flow once UI is rendered
     setTimeout(() => {
         void initEnBlocksMonetization();
-    }, 2500);
+    }, 800);
 }
 
 if (document.readyState === 'loading') {
-    document.addEventListener(
-        'DOMContentLoaded',
-        safeAppInit,
-        { once: true }
-    );
+    document.addEventListener('DOMContentLoaded', safeAppInit, { once: true });
 } else {
     safeAppInit();
 }
