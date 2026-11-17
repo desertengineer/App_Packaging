@@ -51,60 +51,67 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Select Xcode 26 and verify iOS SDK
+      - name: Select Xcode 26 and ensure iOS platform is ready
         shell: bash
         run: |
           set -Eeuo pipefail
 
+          echo "Installed Xcode versions:"
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
+
           selected=""
+          # Prefer an Xcode 26.x installation that already has the iOS platform registered
           for app in /Applications/Xcode_26*.app /Applications/Xcode.app; do
             [[ -d "$app/Contents/Developer" ]] || continue
-
             sdk_path="$app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs"
-            [[ -d "$sdk_path" ]] || continue
-
             if compgen -G "$sdk_path/iPhoneOS26*.sdk" > /dev/null; then
-              selected="$app/Contents/Developer"
-              break
+              sudo xcode-select -s "$app/Contents/Developer"
+              if xcrun simctl list runtimes | grep -q "iOS 26"; then
+                selected="$app/Contents/Developer"
+                break
+              fi
+              [[ -z "$selected" ]] && selected="$app/Contents/Developer"
             fi
           done
 
           if [[ -z "$selected" ]]; then
             echo "::error::No Xcode installation with the iOS 26 SDK was found."
-            echo "Installed Xcode apps:"
-            ls -d /Applications/Xcode*.app 2>/dev/null || true
             exit 1
           fi
 
           sudo xcode-select -s "$selected"
-
           echo "Selected developer directory: $(xcode-select -p)"
           xcodebuild -version
 
-          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
-          echo "Selected iOS SDK: $sdk_version"
+          # Warm up CoreSimulatorService so xcodebuild/simctl can connect cleanly
+          xcrun simctl list devices > /dev/null 2>&1 || true
+          sleep 3
 
-          sdk_major="${sdk_version%%.*}"
-          if [[ "$sdk_major" -lt 26 ]]; then
-            echo "::error::App Store Connect requires the iOS 26 SDK or newer; found $sdk_version."
-            exit 1
+          # Download iOS platform only if iOS 26 runtime is not yet installed
+          if ! xcrun simctl list runtimes | grep -q "iOS 26"; then
+            echo "iOS 26 platform runtime not cached; installing now..."
+            xcodebuild -runFirstLaunch || true
+            for attempt in 1 2 3; do
+              if xcodebuild -downloadPlatform iOS; then
+                break
+              fi
+              echo "Download attempt $attempt failed; restarting simulator service and retrying..."
+              killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
+              sleep 5
+              xcrun simctl list devices > /dev/null 2>&1 || true
+              [[ "$attempt" -eq 3 ]] && exit 1
+            done
           fi
 
-      - name: Verify Xcode SDK version
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
           sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
-          echo "Detected iOS SDK version: $sdk_version"
+          echo "Active iOS SDK version: $sdk_version"
+          xcodebuild -showsdks
 
           sdk_major="${sdk_version%%.*}"
           if [[ "$sdk_major" -lt "$MIN_IOS_SDK" ]]; then
             echo "::error::App Store Connect requires iOS SDK $MIN_IOS_SDK or newer. Detected: $sdk_version"
             exit 1
           fi
-
-          echo "iOS SDK version $sdk_version meets the minimum requirement"
 
       - name: Locate EnBlocks project
         shell: bash
