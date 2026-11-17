@@ -50,58 +50,58 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-
-      - name: Select Xcode 26 and verify iOS device platform
+      
+      - name: Select Xcode 26 with installed iOS platform
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          echo "Installed Xcode bundles:"
+          echo "Installed Xcode bundles on runner:"
           ls -d /Applications/Xcode*.app 2>/dev/null || true
 
           selected=""
-          # First pass: find an Xcode 26+ bundle where xcodebuild -showsdks already registers iphoneos26
-          for app in /Applications/Xcode_26*.app /Applications/Xcode.app; do
+          # Check newest Xcode 26.x bundles first (reverse sort) to find one with a ready iOS 26 platform
+          for app in $(ls -dr /Applications/Xcode_26*.app /Applications/Xcode.app 2>/dev/null); do
             [[ -d "$app/Contents/Developer" ]] || continue
             sudo xcode-select -s "$app/Contents/Developer"
-            if xcodebuild -showsdks 2>/dev/null | grep -q "iphoneos26"; then
+
+            sdk_ver="$(xcrun --sdk iphoneos --show-sdk-version 2>/dev/null || echo "0")"
+            sdk_major="${sdk_ver%%.*}"
+            [[ "$sdk_major" -lt "$MIN_IOS_SDK" ]] && continue
+
+            echo "Testing $app (SDK $sdk_ver)..."
+            if xcrun simctl list runtimes 2>/dev/null | grep -q "iOS 26"; then
               selected="$app/Contents/Developer"
+              echo "Found ready iOS 26 runtime in $app"
               break
             fi
           done
 
-          # Second pass: fallback to any Xcode 26+ SDK folder and download the iOS device platform
+          # Fallback: if no Xcode bundle has a pre-cached runtime, select the newest Xcode 26 and mount iOS platform
           if [[ -z "$selected" ]]; then
-            for app in /Applications/Xcode_26*.app /Applications/Xcode.app; do
+            for app in $(ls -dr /Applications/Xcode_26*.app /Applications/Xcode.app 2>/dev/null); do
               [[ -d "$app/Contents/Developer" ]] || continue
-              sdk_path="$app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs"
-              if compgen -G "$sdk_path/iPhoneOS26*.sdk" > /dev/null; then
+              sdk_ver="$(xcrun --sdk iphoneos --show-sdk-version 2>/dev/null || echo "0")"
+              if [[ "${sdk_ver%%.*}" -ge "$MIN_IOS_SDK" ]]; then
                 selected="$app/Contents/Developer"
-                sudo xcode-select -s "$selected"
-                xcodebuild -runFirstLaunch || true
-                xcodebuild -downloadPlatform iOS -buildVersion 26.0 || xcodebuild -downloadPlatform iOS || true
                 break
               fi
             done
-          fi
 
-          if [[ -z "$selected" ]]; then
-            echo "::error::No Xcode installation with the iOS 26 SDK was found."
-            exit 1
+            [[ -z "$selected" ]] && { echo "::error::No Xcode 26+ found."; exit 1; }
+            sudo xcode-select -s "$selected"
+
+            # Bootstrap CoreSimulator daemon before downloading platform
+            sudo xcodebuild -runFirstLaunch || true
+            open -a Simulator --background || true
+            sleep 5
+            xcodebuild -downloadPlatform iOS
           fi
 
           sudo xcode-select -s "$selected"
-          echo "Active Xcode: $(xcode-select -p)"
+          echo "Selected Xcode: $(xcode-select -p)"
           xcodebuild -version
-          echo "Registered SDKs:"
           xcodebuild -showsdks
-
-          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
-          sdk_major="${sdk_version%%.*}"
-          if [[ "$sdk_major" -lt "$MIN_IOS_SDK" ]]; then
-            echo "::error::App Store Connect requires iOS SDK $MIN_IOS_SDK or newer. Detected: $sdk_version"
-            exit 1
-          fi
 
       - name: Locate EnBlocks project
         shell: bash
